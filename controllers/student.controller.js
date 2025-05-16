@@ -106,49 +106,47 @@ exports.handlePostTokenSubmission= async (req,res)=>{
         const owner= await User.findOne({ mess_id: req.user.mess_id, role: 'owner'})
             if (!owner) {
                 console.log("Owner not found.")
-                return
-            }
-
-        const ownerTokens= await PushNotificationToken.find({ userId: owner._id })
-            if (!ownerTokens.length) {
-                console.log("No Push-Notification-Tokens found for Owner.");
-                return
             }
 
         let pushSent= false
-        const tokens = ownerTokens.map(entry => entry.token)
-        try{
-            await sendPushNotifications(tokens, {
-                title: titleForOwner,
-                body: bodyForOwner
-            })
-            pushSent= true
-        }catch(err){
-            console.log(err.message)
-            pushSent= false
-        }
-       
+
+        const ownerTokens= await PushNotificationToken.find({ userId: owner._id })
+            if(ownerTokens.length){
+                const tokens = ownerTokens.map(entry => entry.token)
+                try{
+                    await sendPushNotifications(tokens, {
+                        title: titleForOwner,
+                        body: bodyForOwner
+                    })
+                    pushSent= true
+                }catch(err){
+                    console.log(err.message)
+                    pushSent= false
+                }
+            }else{
+                console.log("No Push-Notification-Tokens found for Owner.")
+            }
+        
         const titleForStudent= "Token Redeemed"
         const bodyForStudent= `You submitted ${tokenIds.length} tokens.`
 
         const studentTokens= await PushNotificationToken.find({ userId: req.user.id, mess_id: req.user.mess_id })
-            if (!studentTokens.length) {
-                console.log("No Push-Notification-Tokens found for Student.");
-                return
+            if (studentTokens.length) {
+                const studentTokensArray = ownerTokens.map(entry => entry.token)
+                try{
+                    await sendPushNotifications(studentTokensArray, {
+                        title: titleForStudent,
+                        body: bodyForStudent
+                    })
+                    pushSent= true
+                }catch(err){
+                    console.log(err.message)
+                    pushSent= false
+                }
+            }else{
+                console.log("No Push-Notification-Tokens found for Student.")
             }
-            
-        const studentTokensArray = ownerTokens.map(entry => entry.token)
-        try{
-            await sendPushNotifications(studentTokensArray, {
-                title: titleForStudent,
-                body: bodyForStudent
-            })
-            pushSent= true
-        }catch(err){
-            console.log(err.message)
-            pushSent= false
-        }
-        
+
         await Notification.create([{
             mess_id: mess_id,          
             student: userId,
