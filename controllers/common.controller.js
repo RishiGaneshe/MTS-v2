@@ -1,0 +1,294 @@
+const { createRazorpayInstance }= require('../services/rezorpayIntegration.js')
+const { getPaymentDetails, handleGetPaymentInfo }= require('../services/miscellaneousServices.js')
+const Token= require('../models/tokenSchema.js')
+const crypto= require('crypto')
+const User= require('../models/signUpSchema.js')
+const SubAccount= require('../models/o_subAccountsData.schema.js')
+const mongoose= require('mongoose')
+const Transaction= require('../models/transactionSchema.js')
+const Notification= require('../models/notificationForOwner.js')
+const PushNotificationToken= require('../models/pushNotificationToken.js')
+
+
+
+let RazorpayInstance
+const RzInstance= async()=>{
+    try{
+        RazorpayInstance= await createRazorpayInstance()
+    }catch(err){
+        console.error("Error in creating Rz Instance"+ err.message)
+    }   
+}
+RzInstance()
+
+
+
+exports.handleRazorpayCreateOrder= async (req,res)=>{
+    try{
+        let { tokenCount }= req.body
+        console.log("Tokens: ", tokenCount)
+
+        tokenCount= tokenCount* 50;
+        console.log("Amount: "+ tokenCount)
+
+        const options= {
+                amount: tokenCount*100,
+                currency: "INR"
+        }
+
+        let order
+        try{
+            order= await RazorpayInstance.orders.create(options)
+            if(!order){
+                return res.status(500).json({ success: false, message: "Unable to create order. Try again later.", error: "Internal Server Error"})
+            }
+        }catch(err){
+            console.error("Unable to create order."+ err.message)
+            return res.status(500).json({ success: false, message: "Unable to create order. Try again later.", error: "Internal Server Error"})
+        }
+
+        console.log("Order Created Successfully.")
+        return res.status(200).json({success: true, order:order, message: "Order Sent Successfully" })
+
+    }catch(err){
+        console.error("error in Payment order creation API", err.message)
+        return res.status(500).json({ success: false, message: "Unable to create order.Try again later.", error: "Internal Server Error"})
+    }
+}
+
+
+exports.handleVerifyPayments= async (req,res)=>{
+    const session= await mongoose.startSession()
+    try{
+        session.startTransaction()
+
+        const secret= process.env.RazorPay_Secret
+        const { order_id, payment_id, signature }= req.body
+
+            if ( !order_id || !payment_id || !signature ) {
+                await session.abortTransaction()
+                return res.status(400).json({ success: false, message: "Missing required parameters." })
+            }
+
+        const hmac= crypto.createHmac("sha256", secret)
+        hmac.update(order_id+ '|' + payment_id)
+        const generatedSignature= hmac.digest("hex")
+
+            if(generatedSignature !== signature){
+                await session.abortTransaction()
+                return res.status(400).json({success: false, message: "Payment failed. Signature Does not matched."})
+            }
+
+        const user= await User.findById(req.user.id).session(session)
+            if(!user){
+                await session.abortTransaction()
+                return res.status(401).json({ success: false, message: 'Invalid Request.User Id not Found.' })
+            }
+
+        let paymentData
+        try{
+            paymentData= await handleGetPaymentInfo(payment_id, process.env.RazorPay_key , process.env.RazorPay_Secret )
+        }catch(err){
+            console.log("Error in the Paymant data info function: ", err.message)
+            throw err
+        }
+
+        const amount= paymentData.amount / 100
+            if (!amount || amount <= 0) {
+                await session.abortTransaction()
+                return res.status(400).json({ success: false, message: "Invalid payment amount." })
+            }
+    
+        const tokenCount = Math.floor(amount / 50)
+            if (tokenCount <= 0) {
+                await session.abortTransaction()
+                return res.status(400).json({ success: false, message: "Insufficient amount for token purchase." })
+            }
+        
+        const tokens= []
+
+        for(let i=0; i<tokenCount; i++){
+            tokens.push ({
+                tokenCode: crypto.randomBytes(8).toString('hex'),
+                user: req.user.id,
+                mess_id: req.user.mess_id,
+                issued_by: req.user.username,
+                issuer_role: req.user.role,
+                expiryDate: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
+                redeemed: false,
+                amount: 50,
+                transactionId: payment_id
+            })
+        }
+        
+        try{        
+            const transaction = new Transaction({
+                transaction_id: paymentData.id,
+                order_id: paymentData.order_id,
+                user_id: user._id,
+                mess_id: req.user.mess_id,
+                username: user.username,
+                amount: amount,
+                currency: paymentData.currency,
+                status: paymentData.status,
+                payment_method: paymentData.method,
+                tokens_purchased: tokenCount,
+                token_validity: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
+                razorpay_signature: signature
+            })
+            await transaction.save()
+
+        }catch(err){
+             await session.abortTransaction()
+             console.error("Error in Token Issue API", err.message)
+             return res.status(500).json({ success: false, error: "Internal Server Error", message: "Error in issueing tokens.Try again later."})
+        }
+
+        let insertedMany
+        try{
+            insertedMany= await Token.insertMany(tokens, { session })
+            user.tokens.push(...insertedMany.map(token => token._id))
+            await user.save({ session })
+
+        }catch(err){
+             await session.abortTransaction()
+             console.error("Error in Token Issue API", err.message)
+             return res.status(500).json({ success: false, error: "Internal Server Error", message: "Error in issueing tokens.Try again later."})
+        }
+
+        try{
+            await Notification.create([{
+                mess_id: req.user.mess_id,         
+                student: user._id,
+                student_username: user.username,   
+                type: "transaction",
+                title: "Token Purchased",
+                message: `${user.username} has purchased ${tokenCount} tokens.`,
+                data: { tokenCount: tokenCount },
+                notificationType: "both",
+                pushSent: false,
+                pushResponse: null
+            }], { session })
+
+        }catch(err){
+            await session.abortTransaction()
+            console.error("Error in Token Issue API", err.message)
+            return res.status(500).json({ success: false, error: "Internal Server Error", message: "Error in issueing tokens.Try again later."})
+        }
+  
+        await session.commitTransaction()
+        console.log("Token Issued Successfully.")
+        return res.status(200).json({ success: true, message: ` ${tokenCount} Token Purchased.` })
+
+    }catch(err){
+        await session.abortTransaction()
+        console.error("Error in payment varification API.",err.message)
+        return res.status(500).json({ success: false, error: "Internal Server Error", message: "Internal Server Error.Try again later."})
+
+    } finally {
+        await session.endSession()
+    }
+}
+
+
+exports.handlePostPushNotificationToken= async (req,res)=>{        
+    try{
+        let { token }= req.body
+        if(!token){
+            return res.status(400).json({ success: false, message: 'Push notification token is required.'})
+        }
+
+        const ipAddress = req.headers['x-forwarded-for']?.split(',').shift() || req.socket?.remoteAddress || 'unknown'
+        const browserInfo = req.headers['user-agent'] || 'unknown'
+        const deviceType = req.body.deviceType || 'web'
+
+        const response1= await PushNotificationToken.create({
+            userId : req.user.id,
+            token : token,
+            browserInfo: browserInfo,
+            ipAddress: ipAddress,
+            deviceType: deviceType
+        })
+
+        console.log("Push Notification Token stored successfully.")
+        return res.status(200).json({ success: true, message: "Token Stored"})
+        
+    }catch(err){
+        console.log(err)
+        return res.status(500).render('Error500')
+    }
+  }
+
+
+
+exports.PostCreateLinkedAccount= async (req, res)=>{        // In-Progress API
+    try{
+        const { email, contact, reference_id, business_name, account_holder_name, ifsc, account_number } = req.body
+        if (!email || !contact || !reference_id || !business_name || !account_holder_name || !ifsc || !account_number) {
+            return res.status(400).json({ message: 'Missing required fields' })
+        }
+
+        const accountExist= await SubAccount.findOne({ reference_id: reference_id })
+        if( accountExist ){
+            return res.status(409).json({ message: 'Linked account already exists for this reference ID' })
+        }
+
+        const data = {
+            email,
+            contact: "9993336584",
+            type: 'vendor',
+            reference_id: reference_id,
+            legal_business_name: business_name,
+            business_type: 'individual',
+            customer_facing_business_name: business_name,
+            notes: { pnr: "nothing"},
+            bank_account: {
+              name: account_holder_name,
+              ifsc,
+              account_number: account_number
+            },
+            profile:{
+                "category":"healthcare",
+                "subcategory":"clinic",
+                "addresses":{
+                    "registered":{
+                        "street1":"507, Koramangala 1st block",
+                        "street2":"MG Road",
+                        "city":"Bengaluru",
+                        "state":"KARNATAKA",
+                        "postal_code":"560034",
+                        "country":"IN"
+                    }
+                }
+            },
+            legal_info:{
+                "pan":"AAACL1234C",
+                "gst":"18AABCU9603R1ZM"
+            }
+          }
+        try{
+            const response = await RazorpayInstance.accounts.create(data)
+        }catch(err){
+            console.error("Error in Sub-account Linking API.",err)
+            return res.status(500).json({ success: false, error: "Internal Server Error", message: "Internal Server Error.Error in Account creation."})
+        }
+
+        const SubAccountData= await SubAccount.create({
+            userId : req.user._id,
+            razorpayAccountId : response.id,
+            referenceId : reference_id,
+            email : email,
+            contact: contact,
+            businessName : business_name,
+            accountHolderName : account_holder_name ,
+            ifsc : ifsc,
+            accountNumber : account_number,
+        })
+
+        return res.status(200).json({ success: true, message: 'Linked account created successfully', razorpayAccountId: response.id, linkedAccount: newLinkedAccount })
+
+    }catch(err){
+        console.error("Error in Sub-account Linking API.",err)
+        return res.status(500).json({ success: false, error: "Internal Server Error", message: "Internal Server Error.Try again later."})
+    }
+}
