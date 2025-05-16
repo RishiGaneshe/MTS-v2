@@ -89,7 +89,7 @@ PORT=7000
 git clone https://github.com/RishiGaneshe/MTS-v2.git
 
 # Navigate into the Student Server directory
-cd Mess-Token-System
+cd MTS-v2
 
 # Install dependencies
 npm install
