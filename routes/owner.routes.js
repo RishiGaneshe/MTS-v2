@@ -9,11 +9,16 @@ router.get("/notifications", Owner.handleNotificationForOwner)
 
 router.post("/owner-dashboard", Owner.handleHelloOwner)
 
+router.post("/logout", Owner.handleOwnerLogout)
+
+router.post("/add-token-price", Owner.handlePostCreateTokenPrice)               // ( New )
+
+
+
 router.post("/link-account", Common.PostCreateLinkedAccount)
 
-router.post("/payment-by-owner", Common.handleVerifyPaymentsDoneByOwners)
+router.post("/payment-by-owner", Common.handleVerifyPaymentsDoneByOwners)       // ( New )
 
-router.post("/logout", Owner.handleOwnerLogout)
 
 
 module.exports= router

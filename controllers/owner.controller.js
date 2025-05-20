@@ -2,6 +2,9 @@ const { verifyToken }= require('../services/jwtToken.js')
 const secret= process.env.Secret
 const { redisClient } = require("../services/redisConnection.js")
 const Notification= require('../models/notificationForOwner.js')
+const TokenPrice= require('../models/messTokenPrice.js')
+const crypto = require('crypto')
+const Transaction= require('../models/transactionSchema.js')
 
 
 
@@ -35,7 +38,57 @@ exports.handleNotificationForOwner= async(req, res)=>{
 
     }catch(err){
         console.error('Error fetching notifications:', err.message)
-        return res.status(500).json({ success: false, message: 'Internal Server Error.' });
+        return res.status(500).json({ success: false, message: 'Internal Server Error.' })
+    }
+}
+
+
+exports.handleGetOwnerTransactionsOfCash= async(req, res)=>{
+    try{
+        const transactionData= await Transaction.find({ username: req.user.username, _id: req.user.id, mess_id: req.user.mess_id})
+            if(!transactionData) {
+                return res.status(404).json({ success: false, message: 'No cash Transactions/token issued by the user.' })
+            }
+
+        console.log("cash transaction data for owner sent successfully.")
+        return res.status(200).json({ success: true, count: notifications.length, data: transactionData })
+
+    }catch(err){
+        console.error('Error fetching cash-transaction data :', err.message)
+        return res.status(500).json({ success: false, message: 'Internal Server Error.' })
+    }
+}
+
+exports.handlePostCreateTokenPrice= async(req, res)=>{
+    try{
+        const { tokenPrice, duration}= req.body
+            if (typeof tokenPrice !== "number" || isNaN(tokenPrice) || tokenPrice < 0) {
+                return res.status(400).json({ success: false, message: "Invalid token price. Must be a non-negative number." })
+            }
+          
+            if (typeof duration !== "number" || isNaN(duration) || duration <= 0) {
+                return res.status(400).json({ success: false, message: "Invalid duration. Must be a positive number." })
+            }
+
+        const result = await TokenPrice.findOneAndUpdate(
+            { mess_id: req.user.mess_id },
+            {
+                $set: { price: tokenPrice, duration: duration },
+                $setOnInsert: { _id: crypto.randomInt(10000, 100000), mess_id: req.user.mess_id }
+            },
+            {
+                new: true,
+                upsert: true,
+                setDefaultsOnInsert: true,
+            }
+        )
+
+        console.log("Token price and duration set.")
+        return res.status(200).json({ success: true, message: `Token price and duration set.` })
+
+    }catch(err){
+        console.error("Error in Owner set token price function:", err.message);
+        return res.status(500).json({ success: false, message: "Internal Server Error." });
     }
 }
 

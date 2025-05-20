@@ -9,6 +9,8 @@ const Transaction= require('../models/transactionSchema.js')
 const Notification= require('../models/notificationForOwner.js')
 const PushNotificationToken= require('../models/pushNotificationToken.js')
 const { sendPushNotifications }= require('../services/sendPushNotification.js')
+const TokenPrice= require('../models/messTokenPrice.js')
+
 
 
 let RazorpayInstance
@@ -98,8 +100,14 @@ exports.handleVerifyPayments= async (req,res)=>{
                 await session.abortTransaction()
                 return res.status(400).json({ success: false, message: "Invalid payment amount." })
             }
-    
-        const tokenCount = Math.floor(amount / 50)
+
+        const tokenData= await TokenPrice.findOne({ mess_id: req.user.mess_id})
+            if( !tokenData){
+                await session.abortTransaction()
+                return res.status(409).json({ success: false, message: "Token Price is not set." })
+            }
+
+        const tokenCount = Math.floor(amount / tokenData.price)
             if (tokenCount <= 0) {
                 await session.abortTransaction()
                 return res.status(400).json({ success: false, message: "Insufficient amount for token purchase." })
@@ -114,9 +122,9 @@ exports.handleVerifyPayments= async (req,res)=>{
                 mess_id: req.user.mess_id,
                 issued_by: req.user.username,
                 issuer_role: req.user.role,
-                expiryDate: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
+                expiryDate: new Date(Date.now() + tokenData.duration * 24 * 60 * 60 * 1000),
                 redeemed: false,
-                amount: 50,
+                amount: tokenData.price,
                 transactionId: payment_id
             })
         }
@@ -133,7 +141,7 @@ exports.handleVerifyPayments= async (req,res)=>{
                 status: paymentData.status,
                 payment_method: paymentData.method,
                 tokens_purchased: tokenCount,
-                token_validity: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
+                token_validity: new Date(Date.now() + tokenData.duration * 24 * 60 * 60 * 1000),
                 razorpay_signature: signature
             })
             await transaction.save()
@@ -284,8 +292,14 @@ exports.handleVerifyPaymentsDoneByOwners= async (req,res)=>{
                 await session.abortTransaction()
                 return res.status(400).json({ success: false, message: "Invalid payment amount." })
             }
-    
-        const tokenCount = Math.floor(amount / 50)
+
+        const tokenData= await TokenPrice.findOne({ mess_id: req.user.mess_id})
+            if( !tokenData){
+                await session.abortTransaction()
+                return res.status(409).json({ success: false, message: "Token Price is not set." })
+            }
+
+        const tokenCount = Math.floor(amount / tokenData.price)
             if (tokenCount <= 0) {
                 await session.abortTransaction()
                 return res.status(400).json({ success: false, message: "Insufficient amount for token purchase." })
@@ -300,9 +314,9 @@ exports.handleVerifyPaymentsDoneByOwners= async (req,res)=>{
                 mess_id: user.mess_id,
                 issued_by: req.user.username,
                 issuer_role: req.user.role,
-                expiryDate: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
+                expiryDate: new Date(Date.now() + tokenData.duration * 24 * 60 * 60 * 1000),
                 redeemed: false,
-                amount: 50,
+                amount: tokenData.price,
                 transactionId: payment_id
             })
         }
@@ -319,7 +333,7 @@ exports.handleVerifyPaymentsDoneByOwners= async (req,res)=>{
                 status: paymentData.status,
                 payment_method: paymentData.method,
                 tokens_purchased: tokenCount,
-                token_validity: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
+                token_validity: new Date(Date.now() + tokenData.duration * 24 * 60 * 60 * 1000),
                 razorpay_signature: signature
             })
             await transaction.save()
@@ -342,6 +356,55 @@ exports.handleVerifyPaymentsDoneByOwners= async (req,res)=>{
              return res.status(500).json({ success: false, error: "Internal Server Error", message: "Error in issueing tokens.Try again later."})
         }
 
+        const titleForOwner= "Token Issued."
+        const bodyForOwner= `${req.user.username} has Issued ${tokenCount} tokens to ${student_username}.`
+
+        const owner= await User.findOne({ username: req.user.username, mess_id: req.user.mess_id, role: 'owner'})
+            
+        let pushSent= false
+
+        const ownerTokens= await PushNotificationToken.find({ userId: owner._id, mess_id: owner.mess_id })
+            if(ownerTokens.length){
+                const tokens = ownerTokens.map(entry => entry.token)
+                try{
+                    await sendPushNotifications(tokens, {
+                        title: titleForOwner,
+                        body: bodyForOwner
+                    })
+                    pushSent= true
+                }catch(err){
+                    console.log(err.message)
+                    pushSent= false
+                }
+            }else{
+                console.log("No Push-Notification-Tokens found for Owner.")
+            }
+
+        const titleForStudent= "Token Issued."
+        const bodyForStudent= `${tokenCount} tokens issued to you.`
+
+        const studentData= await User.findOne({ username: student_username, mess_id: req.user.mess_id, role: 'student'})
+            if(!studentData){
+                console.log("No Student present with the given username.")
+            }
+
+        const studentTokens= await PushNotificationToken.find({ userId: studentData._id, mess_id: req.user.mess_id })
+            if (studentTokens.length) {
+                const studentTokensArray = studentTokens.map(entry => entry.token)
+                try{
+                    await sendPushNotifications(studentTokensArray, {
+                        title: titleForStudent,
+                        body: bodyForStudent
+                    })
+                    pushSent= true
+                }catch(err){
+                    console.log(err.message)
+                    pushSent= false
+                }
+            }else{
+                console.log("No Push-Notification-Tokens found for Student.")
+            }
+
         try{
             await Notification.create([{
                 mess_id: req.user.mess_id,         
@@ -352,7 +415,7 @@ exports.handleVerifyPaymentsDoneByOwners= async (req,res)=>{
                 message: `${req.user.username} issued ${tokenCount} to ${user.username}`,
                 data: { tokenCount: tokenCount },
                 notificationType: "both",
-                pushSent: false,
+                pushSent: pushSent,
                 pushResponse: null
             }], { session })
 
