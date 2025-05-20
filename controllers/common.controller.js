@@ -191,33 +191,31 @@ exports.handleVerifyPayments= async (req,res)=>{
 }
 
 
-exports.handlePostPushNotificationToken= async (req,res)=>{        
-    try{
-        let { token }= req.body
-        if(!token){
-            return res.status(400).json({ success: false, message: 'Push notification token is required.'})
-        }
-
+exports.handlePostPushNotificationToken = async (req, res) => {
+    try {
+        const { token } = req.body
+            if (!token) {
+                return res.status(400).json({ success: false, message: 'Push notification token is required.' });
+            }
+    
         const ipAddress = req.headers['x-forwarded-for']?.split(',').shift() || req.socket?.remoteAddress || 'unknown'
         const browserInfo = req.headers['user-agent'] || 'unknown'
-        const deviceType = req.body.deviceType || 'web'
-
-        const response1= await PushNotificationToken.create({
-            userId : req.user.id,
-            token : token,
-            browserInfo: browserInfo,
-            ipAddress: ipAddress,
-            deviceType: deviceType
-        })
-
-        console.log("Push Notification Token stored successfully.")
-        return res.status(200).json({ success: true, message: "Token Stored"})
+        const userId = req.user.id
+    
+        const response = await PushNotificationToken.findOneAndUpdate(
+            { token },
+            { userId, ipAddress, browserInfo, lastUpdated: new Date() },
+            { upsert: true, new: true }
+        )
         
-    }catch(err){
-        console.log(err)
-        return res.status(500).render('Error500')
+        console.log("Push Notification Token registered or reassigned.")
+        return res.status(200).json({ success: true, message: "Token registered." })
+    
+    } catch (err) {
+        console.error("Error saving push token:", err)
+        return res.status(500).json({ success: false, message: "Internal server Error" })
     }
-  }
+}
 
 
 
