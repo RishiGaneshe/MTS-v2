@@ -8,7 +8,7 @@ const mongoose= require('mongoose')
 const Transaction= require('../models/transactionSchema.js')
 const Notification= require('../models/notificationForOwner.js')
 const PushNotificationToken= require('../models/pushNotificationToken.js')
-
+const { sendPushNotifications }= require('../services/sendPushNotification.js')
 
 
 let RazorpayInstance
@@ -188,7 +188,7 @@ exports.handleVerifyPayments= async (req,res)=>{
 
         const studentTokens= await PushNotificationToken.find({ userId: req.user.id, mess_id: req.user.mess_id })
             if (studentTokens.length) {
-                const studentTokensArray = studentTokensArray.map(entry => entry.token)
+                const studentTokensArray = studentTokens.map(entry => entry.token)
                 try{
                     await sendPushNotifications(studentTokensArray, {
                         title: titleForStudent,
