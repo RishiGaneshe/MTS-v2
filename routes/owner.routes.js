@@ -11,6 +11,8 @@ router.post("/owner-dashboard", Owner.handleHelloOwner)
 
 router.post("/link-account", Common.PostCreateLinkedAccount)
 
+router.post("/payment-by-owner", Common.handleVerifyPaymentsDoneByOwners)
+
 router.post("/logout", Owner.handleOwnerLogout)
 
 

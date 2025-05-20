@@ -156,6 +156,53 @@ exports.handleVerifyPayments= async (req,res)=>{
              return res.status(500).json({ success: false, error: "Internal Server Error", message: "Error in issueing tokens.Try again later."})
         }
 
+        const titleForOwner= "Token Purchased"
+        const bodyForOwner= `${req.user.username} has purchased ${tokenCount} tokens.`
+
+        const owner= await User.findOne({ mess_id: req.user.mess_id, role: 'owner'})
+            if (!owner) {
+                console.log("Owner not found.")
+            }
+
+        let pushSent= false
+
+        const ownerTokens= await PushNotificationToken.find({ userId: owner._id, mess_id: owner.mess_id })
+            if(ownerTokens.length){
+                const tokens = ownerTokens.map(entry => entry.token)
+                try{
+                    await sendPushNotifications(tokens, {
+                        title: titleForOwner,
+                        body: bodyForOwner
+                    })
+                    pushSent= true
+                }catch(err){
+                    console.log(err.message)
+                    pushSent= false
+                }
+            }else{
+                console.log("No Push-Notification-Tokens found for Owner.")
+            }
+
+        const titleForStudent= "Token Purchased"
+        const bodyForStudent= `You Purchased ${tokenCount} tokens.`
+
+        const studentTokens= await PushNotificationToken.find({ userId: req.user.id, mess_id: req.user.mess_id })
+            if (studentTokens.length) {
+                const studentTokensArray = ownerTokens.map(entry => entry.token)
+                try{
+                    await sendPushNotifications(studentTokensArray, {
+                        title: titleForStudent,
+                        body: bodyForStudent
+                    })
+                    pushSent= true
+                }catch(err){
+                    console.log(err.message)
+                    pushSent= false
+                }
+            }else{
+                console.log("No Push-Notification-Tokens found for Student.")
+            }
+
         try{
             await Notification.create([{
                 mess_id: req.user.mess_id,         
@@ -164,6 +211,145 @@ exports.handleVerifyPayments= async (req,res)=>{
                 type: "transaction",
                 title: "Token Purchased",
                 message: `${user.username} has purchased ${tokenCount} tokens.`,
+                data: { tokenCount: tokenCount },
+                notificationType: "both",
+                pushSent: pushSent,
+                pushResponse: null
+            }], { session })
+
+        }catch(err){
+            await session.abortTransaction()
+            console.error("Error in Token Issue API", err.message)
+            return res.status(500).json({ success: false, error: "Internal Server Error", message: "Error in issueing tokens.Try again later."})
+        }
+  
+        await session.commitTransaction()
+        console.log("Token Issued Successfully.")
+        return res.status(200).json({ success: true, message: ` ${tokenCount} Token Purchased.` })
+
+    }catch(err){
+        await session.abortTransaction()
+        console.error("Error in payment varification API.",err.message)
+        return res.status(500).json({ success: false, error: "Internal Server Error", message: "Internal Server Error.Try again later."})
+
+    } finally {
+        await session.endSession()
+    }
+}
+
+
+exports.handleVerifyPaymentsDoneByOwners= async (req,res)=>{
+    const session= await mongoose.startSession()
+    try{
+        session.startTransaction()
+        const mess_id= req.user.mess_id
+        const { student_username }= req.body
+            if( !student_username ){
+                await session.abortTransaction()
+                return res.status(400).json({success: false, message: "No username provided."})
+            }
+        
+        const secret= process.env.RazorPay_Secret
+        const { order_id, payment_id, signature }= req.body
+            if ( !order_id || !payment_id || !signature ) {
+                await session.abortTransaction()
+                return res.status(400).json({ success: false, message: "Missing required parameters." })
+            }
+
+        const hmac= crypto.createHmac("sha256", secret)
+        hmac.update(order_id+ '|' + payment_id)
+        const generatedSignature= hmac.digest("hex")
+
+            if(generatedSignature !== signature){
+                await session.abortTransaction()
+                return res.status(400).json({success: false, message: "Payment failed. Signature Does not matched."})
+            }
+
+        const user= await User.findOne({ username: student_username, mess_id: mess_id, isActive: true})
+            if(!user){
+                await session.abortTransaction()
+                return res.status(401).json({ success: false, message: 'Invalid Request.User Id not Found.' })
+            }
+
+        let paymentData
+        try{
+            paymentData= await handleGetPaymentInfo(payment_id, process.env.RazorPay_key , process.env.RazorPay_Secret )
+        }catch(err){
+            console.log("Error in the Paymant data info function: ", err.message)
+            throw err
+        }
+
+        const amount= paymentData.amount / 100
+            if (!amount || amount <= 0) {
+                await session.abortTransaction()
+                return res.status(400).json({ success: false, message: "Invalid payment amount." })
+            }
+    
+        const tokenCount = Math.floor(amount / 50)
+            if (tokenCount <= 0) {
+                await session.abortTransaction()
+                return res.status(400).json({ success: false, message: "Insufficient amount for token purchase." })
+            }
+        
+        const tokens= []
+
+        for(let i=0; i<tokenCount; i++){
+            tokens.push ({
+                tokenCode: crypto.randomBytes(8).toString('hex'),
+                user: user._id,
+                mess_id: user.mess_id,
+                issued_by: req.user.username,
+                issuer_role: req.user.role,
+                expiryDate: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
+                redeemed: false,
+                amount: 50,
+                transactionId: payment_id
+            })
+        }
+        
+        try{        
+            const transaction = new Transaction({
+                transaction_id: paymentData.id,
+                order_id: paymentData.order_id,
+                user_id: req.user.id,
+                mess_id: req.user.mess_id,
+                username: req.user.username,
+                amount: amount,
+                currency: paymentData.currency,
+                status: paymentData.status,
+                payment_method: paymentData.method,
+                tokens_purchased: tokenCount,
+                token_validity: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
+                razorpay_signature: signature
+            })
+            await transaction.save()
+
+        }catch(err){
+             await session.abortTransaction()
+             console.error("Error in Token Issue API", err.message)
+             return res.status(500).json({ success: false, error: "Internal Server Error", message: "Error in issueing tokens.Try again later."})
+        }
+
+        let insertedMany
+        try{
+            insertedMany= await Token.insertMany(tokens, { session })
+            user.tokens.push(...insertedMany.map(token => token._id))
+            await user.save({ session })
+
+        }catch(err){
+             await session.abortTransaction()
+             console.error("Error in Token Issue API", err.message)
+             return res.status(500).json({ success: false, error: "Internal Server Error", message: "Error in issueing tokens.Try again later."})
+        }
+
+        try{
+            await Notification.create([{
+                mess_id: req.user.mess_id,         
+                student: user._id,
+                student_username: user.username,   
+                type: "transaction",
+                title: "Token Issued",
+                message: `${req.user.username} issued ${tokenCount} to ${user.username}`,
                 data: { tokenCount: tokenCount },
                 notificationType: "both",
                 pushSent: false,
@@ -201,10 +387,11 @@ exports.handlePostPushNotificationToken = async (req, res) => {
         const ipAddress = req.headers['x-forwarded-for']?.split(',').shift() || req.socket?.remoteAddress || 'unknown'
         const browserInfo = req.headers['user-agent'] || 'unknown'
         const userId = req.user.id
+        const mess_id= req.user.mess_id
     
         const response = await PushNotificationToken.findOneAndUpdate(
             { token },
-            { userId, ipAddress, browserInfo, lastUpdated: new Date() },
+            { userId, mess_id, ipAddress, browserInfo, lastUpdated: new Date() },
             { upsert: true, new: true }
         )
         
