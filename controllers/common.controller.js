@@ -188,7 +188,7 @@ exports.handleVerifyPayments= async (req,res)=>{
 
         const studentTokens= await PushNotificationToken.find({ userId: req.user.id, mess_id: req.user.mess_id })
             if (studentTokens.length) {
-                const studentTokensArray = ownerTokens.map(entry => entry.token)
+                const studentTokensArray = studentTokensArray.map(entry => entry.token)
                 try{
                     await sendPushNotifications(studentTokensArray, {
                         title: titleForStudent,

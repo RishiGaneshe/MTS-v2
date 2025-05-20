@@ -1,4 +1,4 @@
-const { admin }= require('../configs/fcm.config')
+const admin = require('../configs/fcm.config')
 
 
 exports.sendPushNotifications= async (tokensArray, messageData)=>{
@@ -6,6 +6,9 @@ exports.sendPushNotifications= async (tokensArray, messageData)=>{
         const { title, body }= messageData
         const messageBase = {
             notification: { title, body },
+        }
+        if (!Array.isArray(tokensArray) || tokensArray.some(t => typeof t !== 'string')) {
+            throw new Error("tokensArray must be an array of strings");
         }
 
         for (const token of tokensArray) {

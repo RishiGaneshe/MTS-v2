@@ -132,7 +132,7 @@ exports.handlePostTokenSubmission= async (req,res)=>{
 
         const studentTokens= await PushNotificationToken.find({ userId: req.user.id, mess_id: req.user.mess_id })
             if (studentTokens.length) {
-                const studentTokensArray = ownerTokens.map(entry => entry.token)
+                const studentTokensArray = studentTokens.map(entry => entry.token)
                 try{
                     await sendPushNotifications(studentTokensArray, {
                         title: titleForStudent,
