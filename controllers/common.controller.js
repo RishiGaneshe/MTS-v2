@@ -27,10 +27,15 @@ RzInstance()
 
 exports.handleRazorpayCreateOrder= async (req,res)=>{
     try{
+        const tokenData= await TokenPrice.findOne({ mess_id: req.user.mess_id})
+            if( !tokenData){
+                return res.status(409).json({ success: false, message: "Token Price is not set." })
+            }
+
         let { tokenCount }= req.body
         console.log("Tokens: ", tokenCount)
 
-        tokenCount= tokenCount* 50;
+        tokenCount= tokenCount* tokenData.price;
         console.log("Amount: "+ tokenCount)
 
         const options= {
