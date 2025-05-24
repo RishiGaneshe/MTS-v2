@@ -23,6 +23,7 @@ example  :    {
 
 Function :   Update Token config
 Path     :  'https://student.studentshub.fun/owner/update-token-config'
+Method   :   POST
 Protected:   Yes
 Role     :   Owner
 json payload fields :  { _id, tokenPrice, duration, name, description, metadata }
@@ -43,6 +44,7 @@ example  :    {
 
 Function :   Delete Token config
 Path     :  'https://student.studentshub.fun/owner/delete-token-config'
+Method   :   POST
 Protected:   Yes
 Role     :   Owner
 json payload fields :  { _id }
@@ -52,6 +54,7 @@ example  :    { "_id" : "6831d498c10de68cdd25d16b" }   ( "_id" not "id" )
 
 Function :   Get All Token config of perticular mess
 Path     :  'https://student.studentshub.fun/owner/get-token-config'
+Method   :   GET
 Protected:   Yes
 Role     :   Owner + Student ( Both )
 json payload fields :  { not required }
