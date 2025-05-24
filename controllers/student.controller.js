@@ -154,7 +154,7 @@ exports.handlePostTokenSubmission= async (req,res)=>{
             type: "token",
             title: "Token Submitted",
             message: `${username} has submitted ${tokenIds.length} tokens.`,
-            data: { tokenCount: tokenIds.length, tokenIds },
+            data: { tokenCount: tokenIds.length, tokenIdsmessage: `${username} has submitted ${tokenIds.length} tokens.` },
             notificationType: "both",
             pushSent: pushSent,
             pushResponse: null

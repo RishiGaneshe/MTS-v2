@@ -13,6 +13,10 @@ router.post("/logout", Owner.handleOwnerLogout)
 
 router.post("/add-token-price", Owner.handlePostCreateTokenPrice)               // ( New )
 
+router.post("/update-token-config", Owner.handlePostUpdateTokenConfiguration)   // ( New )
+
+router.post("/delete-token-config", Owner.handleDeleteTokenConfiguration)       // ( New )
+
 
 
 router.post("/link-account", Common.PostCreateLinkedAccount)

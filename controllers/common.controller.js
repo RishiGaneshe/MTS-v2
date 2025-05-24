@@ -451,7 +451,7 @@ exports.handlePostPushNotificationToken = async (req, res) => {
             if (!token) {
                 return res.status(400).json({ success: false, message: 'Push notification token is required.' });
             }
-    
+            
         const ipAddress = req.headers['x-forwarded-for']?.split(',').shift() || req.socket?.remoteAddress || 'unknown'
         const browserInfo = req.headers['user-agent'] || 'unknown'
         const userId = req.user.id
@@ -472,6 +472,30 @@ exports.handlePostPushNotificationToken = async (req, res) => {
     }
 }
 
+
+exports.handleGetAllTokenConfigurations= async(req, res)=>{
+    try{
+        const mess_id = req.user.mess_id
+
+        if (!mess_id || typeof mess_id !== "string") {
+            return res.status(400).json({ success: false, message: "Invalid or missing mess_id in request." })
+        }
+
+        const tokenConfig = await TokenPrice.find({ mess_id })
+                                       .sort({ createdAt: -1 })
+                                       .lean()
+        if(!tokenConfig){
+            return res.status(404).json({ success: false, message: "No token Configuration present."})
+        }
+        
+        console.log(`Token Config sent for mess_id : ${mess_id}`)
+        return res.status(200).json({ success: true, message: "Token configurations retrieved successfully.", data: tokenConfig })
+
+    }catch(err){
+        console.log('Error in the Get Token Config API.', err.message)
+        return res.status(500).json({ success: false, message: "Internal Server Error."})
+    }
+}
 
 
 exports.PostCreateLinkedAccount= async (req, res)=>{        // In-Progress API

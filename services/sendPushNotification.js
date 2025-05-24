@@ -15,14 +15,13 @@ exports.sendPushNotifications= async (tokensArray, messageData)=>{
             try {
                 const message = { ...messageBase, token }
                 await admin.messaging().send(message)
-                console.log(`Push sent to token: ${token}`)
+                console.log(`Push Notification sent to user.`)
             }catch (err) {
-                console.error(`Failed to send push to token: ${token}`, err)
+                console.error(`Failed to send pushnotification to token: `, err.message)
             }
         }
-        console.log("All push notifications processed.")
     }catch(err){
-        console.error(`Failed to send push notifications.`, err)
+        console.error(`Failed to send push notifications.`, err.message)
         throw err
     }
 }
