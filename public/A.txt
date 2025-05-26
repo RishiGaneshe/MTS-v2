@@ -84,3 +84,21 @@ example  :    {
                  "student_username" : "student"
               } 
 
+
+Function :   Delete Student
+Path     :  'https://student.studentshub.fun/owner/delete-student'
+Method   :   POST
+Protected:   Yes
+Role     :   Owner
+json payload fields :  { student_username }
+example  :    { 
+                 "student_username" : "student",
+              }
+
+
+Function :   All Transactions by Owner
+Path     :  'https://student.studentshub.fun/owner/all-transactions'
+Method   :   GET
+Protected:   Yes
+Role     :   Owner
+json payload fields :  { not required }

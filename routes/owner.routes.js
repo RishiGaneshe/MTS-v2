@@ -9,6 +9,11 @@ router.get("/notifications", Owner.handleNotificationForOwner)
 
 router.get("/get-all-students", Owner.handleGetAllMessStudent)                  // ( New )
 
+router.get("/all-transactions", Owner.handleGetOwnerTransactionsOfCash)         // ( New )
+
+
+
+
 router.post("/owner-dashboard", Owner.handleHelloOwner)
 
 router.post("/logout", Owner.handleOwnerLogout)
@@ -20,8 +25,6 @@ router.post("/update-token-config", Owner.handlePostUpdateTokenConfiguration)   
 router.post("/delete-token-config", Owner.handleDeleteTokenConfiguration)       // ( New )
 
 router.post("/delete-student", Owner.handlePostDeleteStudent)                   // ( New )
-
-
 
 
 
