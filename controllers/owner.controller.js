@@ -5,6 +5,8 @@ const Notification= require('../models/notificationForOwner.js')
 const TokenPrice= require('../models/messTokenPrice.js')
 const crypto = require('crypto')
 const Transaction= require('../models/transactionSchema.js')
+const User= require('../models/signUpSchema.js')
+const UserProfile= require('../models/studentProfile.js')
 
 
 
@@ -118,7 +120,6 @@ exports.handlePostUpdateTokenConfiguration= async(req, res)=>{
         }
 
         const mess_id= req.user.mess_id 
-    
         const updated = await TokenPrice.findOneAndUpdate(
             { _id, mess_id },
             {
@@ -167,6 +168,70 @@ exports.handleDeleteTokenConfiguration = async (req, res) => {
         console.error("Error deleting token configuration:", err.message)
         return res.status(500).json({ success: false, message: "Internal Server Error."})
   }
+}
+
+
+exports.handlePostDeleteStudent= async(req, res)=>{
+    try{
+        const mess_id= req.user.mess_id
+
+        const role= req.user.role
+            if( role != 'owner'){
+                return res.status(403).json({ success: false, message: 'Not authorize to perform this action.'})
+            }
+
+        const { student_username }= req.body
+            if(!student_username){
+                return res.status(404).json({ success: false, message: 'students username is required.'})
+            }
+
+        const student = await User.findOne({ username: student_username, mess_id: mess_id, role: 'student', isActive: true })
+            if (!student) {
+                return res.status(404).json({ success: false, message: 'Student not found or unauthorized access.' })
+            }
+
+        student.isActive = false
+        await student.save()
+
+        console.log('Student Id De-activated successfully.')
+        return res.status(200).json({ success: true, message: 'Student Id De-activated successfully.' })
+
+    }catch(err){
+        console.error('Error deleting student:', err.message)
+        return res.status(500).json({ success: false, message: 'Internal server error.' })
+    }
+}
+
+
+exports.handleGetAllMessStudent= async(req, res)=>{
+    try{
+        const mess_id= req.user.mess_id
+        if(!mess_id){
+            return res.status(403).json({ success: false, message: 'Student not found or unauthorized access.' });
+        }
+
+        const students = await UserProfile.find(
+            { mess_id: mess_id, role: 'student' },
+            {
+              username: 1,
+              fullName: 1,
+              bio: 1,
+              profileImage: 1,
+              phone: 1,
+              profession: 1,
+              age: 1,
+              dateOfBirth: 1,
+              createdAt: 1
+            }
+          )
+          .sort({ createdAt: -1 })
+          .lean()
+      
+          return res.status(200).json({ success: true, message: 'data sent successfully.', data: students })
+    }catch(err){
+        console.error('Error sending registered student data:', err.message)
+        return res.status(500).json({ success: false, message: 'Internal server error.' })
+    }
 }
 
 

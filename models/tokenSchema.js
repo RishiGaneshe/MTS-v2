@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const tokenSchema = new mongoose.Schema({
     tokenCode: { type: String, required: true, unique: true },
     user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    tokenConfigId: { type: mongoose.Schema.Types.ObjectId, ref: 'TokenPrice', required: true },
     mess_id: { type: String, required: true },                 // to be indexed
     issued_by: { type: String, required: true },
     issuer_role: { type: String, required: true, enum: ['owner', 'student']}, 

@@ -27,11 +27,16 @@ RzInstance()
 
 exports.handleRazorpayCreateOrder= async (req,res)=>{
     try{
-        const tokenData= await TokenPrice.findOne({ mess_id: req.user.mess_id})
+        const { tokenConfigId }= req.body
+            if( !tokenConfigId){
+                return res.status(400).json({ success: false, message: "No Token Config Id." })
+            }
+
+        const tokenData= await TokenPrice.findById(tokenConfigId)
             if( !tokenData){
                 return res.status(409).json({ success: false, message: "Token Price is not set." })
             }
-
+        
         let { tokenCount }= req.body
         console.log("Tokens: ", tokenCount)
 
@@ -256,10 +261,15 @@ exports.handleVerifyPaymentsDoneByOwners= async (req,res)=>{
     try{
         session.startTransaction()
         const mess_id= req.user.mess_id
-        const { student_username }= req.body
+        const { student_username, tokenConfigId }= req.body
             if( !student_username ){
                 await session.abortTransaction()
                 return res.status(400).json({success: false, message: "No username provided."})
+            }
+
+            if( !tokenConfigId ){
+                await session.abortTransaction()
+                return res.status(400).json({success: false, message: "No token Config Id Provided."})
             }
         
         const secret= process.env.RazorPay_Secret
@@ -298,10 +308,11 @@ exports.handleVerifyPaymentsDoneByOwners= async (req,res)=>{
                 return res.status(400).json({ success: false, message: "Invalid payment amount." })
             }
 
-        const tokenData= await TokenPrice.findOne({ mess_id: req.user.mess_id})
+        
+        const tokenData= await TokenPrice.findById(tokenConfigId)
             if( !tokenData){
                 await session.abortTransaction()
-                return res.status(409).json({ success: false, message: "Token Price is not set." })
+                return res.status(409).json({ success: false, message: "No token Config Found by this token config ID." })
             }
 
         const tokenCount = Math.floor(amount / tokenData.price)
@@ -316,6 +327,7 @@ exports.handleVerifyPaymentsDoneByOwners= async (req,res)=>{
             tokens.push ({
                 tokenCode: crypto.randomBytes(8).toString('hex'),
                 user: user._id,
+                tokenConfigId: tokenConfigId,
                 mess_id: user.mess_id,
                 issued_by: req.user.username,
                 issuer_role: req.user.role,
@@ -338,6 +350,7 @@ exports.handleVerifyPaymentsDoneByOwners= async (req,res)=>{
                 status: paymentData.status,
                 payment_method: paymentData.method,
                 tokens_purchased: tokenCount,
+                tokenConfigId: tokenConfigId,
                 token_validity: new Date(Date.now() + tokenData.duration * 24 * 60 * 60 * 1000),
                 razorpay_signature: signature
             })
@@ -361,8 +374,8 @@ exports.handleVerifyPaymentsDoneByOwners= async (req,res)=>{
              return res.status(500).json({ success: false, error: "Internal Server Error", message: "Error in issueing tokens.Try again later."})
         }
 
-        const titleForOwner= "Token Issued."
-        const bodyForOwner= `${req.user.username} has Issued ${tokenCount} tokens to ${student_username}.`
+        const titleForOwner= `${tokenData.name} Token Issued.`
+        const bodyForOwner = `${req.user.username} issued ${tokenCount} ${tokenData.name} token(s) to ${student_username}.`
 
         const owner= await User.findOne({ username: req.user.username, mess_id: req.user.mess_id, role: 'owner'})
             
@@ -385,12 +398,14 @@ exports.handleVerifyPaymentsDoneByOwners= async (req,res)=>{
                 console.log("No Push-Notification-Tokens found for Owner.")
             }
 
-        const titleForStudent= "Token Issued."
-        const bodyForStudent= `${tokenCount} tokens issued to you.`
+        const titleForStudent= `${tokenData.name} Token Issued.`
+        const bodyForStudent = `${tokenCount} ${tokenData.name} token${tokenCount > 1 ? 's' : ''} have been issued to you.`
 
         const studentData= await User.findOne({ username: student_username, mess_id: req.user.mess_id, role: 'student'})
             if(!studentData){
+                await session.abortTransaction()
                 console.log("No Student present with the given username.")
+                return res.status(400).json({ success: false, message: "No Student present with the given username." })
             }
 
         const studentTokens= await PushNotificationToken.find({ userId: studentData._id, mess_id: req.user.mess_id })
@@ -416,9 +431,9 @@ exports.handleVerifyPaymentsDoneByOwners= async (req,res)=>{
                 student: user._id,
                 student_username: user.username,   
                 type: "transaction",
-                title: "Token Issued",
-                message: `${req.user.username} issued ${tokenCount} to ${user.username}`,
-                data: { tokenCount: tokenCount },
+                title: `${tokenData.name} Token Issued`,
+                message: `${req.user.username} issued ${tokenCount} ${tokenData.name} to ${user.username}`,
+                data: { tokenCount: tokenCount, tokenConfigName: tokenData.name },
                 notificationType: "both",
                 pushSent: pushSent,
                 pushResponse: null

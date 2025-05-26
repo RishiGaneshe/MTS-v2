@@ -15,6 +15,7 @@ const transactionSchema = new mongoose.Schema({
     },
     payment_method: { type: String, required: true },
     tokens_purchased: { type: Number, required: true }, 
+    tokenConfigId: { type: mongoose.Schema.Types.ObjectId, ref: 'TokenPrice', required: true },
     token_validity: { type: Date, required: true },  
     razorpay_signature: { type: String, required: true }, 
    

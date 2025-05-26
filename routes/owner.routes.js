@@ -7,6 +7,8 @@ const Common= require('../controllers/common.controller')
 
 router.get("/notifications", Owner.handleNotificationForOwner)
 
+router.get("/get-all-students", Owner.handleGetAllMessStudent)                  // ( New )
+
 router.post("/owner-dashboard", Owner.handleHelloOwner)
 
 router.post("/logout", Owner.handleOwnerLogout)
@@ -16,6 +18,10 @@ router.post("/add-token-price", Owner.handlePostCreateTokenPrice)               
 router.post("/update-token-config", Owner.handlePostUpdateTokenConfiguration)   // ( New )
 
 router.post("/delete-token-config", Owner.handleDeleteTokenConfiguration)       // ( New )
+
+router.post("/delete-student", Owner.handlePostDeleteStudent)                   // ( New )
+
+
 
 
 

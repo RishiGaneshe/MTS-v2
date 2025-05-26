@@ -53,10 +53,34 @@ example  :    { "_id" : "6831d498c10de68cdd25d16b" }   ( "_id" not "id" )
 
 
 Function :   Get All Token config of perticular mess
-Path     :  'https://student.studentshub.fun/owner/get-token-config'
+Path     :  'https://student.studentshub.fun/common/get-token-config'
 Method   :   GET
 Protected:   Yes
 Role     :   Owner + Student ( Both )
 json payload fields :  { not required }
-example  :    { "_id" : "6831d498c10de68cdd25d16b" }   ( "_id" not "id" )
+
+
+
+Function :   Create Order
+Path     :  'https://student.studentshub.fun/common/create-order'
+Method   :   POST
+Protected:   Yes
+Role     :   Owner + Student  (Both)
+json payload fields :  { tokenConfigId, tokenCount }
+example  :    { 
+                 "tokenConfigId" : "6831d498c10de68cdd25d16b",
+                 "tokenCount" : 5
+              }
+
+
+Function :   Verify Payment
+Path     :  'https://student.studentshub.fun/owner/payment-by-owner'
+Method   :   POST
+Protected:   Yes
+Role     :   Owner
+json payload fields :  { student_username, tokenConfigId }
+example  :    { 
+                 "tokenConfigId" : "6831d498c10de68cdd25d16b"
+                 "student_username" : "student"
+              } 
 

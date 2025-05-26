@@ -2,7 +2,8 @@ const mongoose = require('mongoose');
 
 
 const TokenSubmissionSchema = new mongoose.Schema({
-    submissionId: { type: String, unique: true, required: true }, 
+    submissionId: { type: String, unique: true, required: true },
+    tokenConfigId: { type: mongoose.Schema.Types.ObjectId, ref: 'TokenPrice', required: true }, 
     user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },  
     username: { type: String, required: true},
     mess_id: { type: String, required: true },        // to be indexed
