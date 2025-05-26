@@ -6,6 +6,7 @@ const transactionSchema = new mongoose.Schema({
     user_id: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
     mess_id: { type: String, required: true },           // to be indexed
     username: { type: String, required: true},
+    transactionBy: { type: String, required: true },
     amount: { type: Number, required: true }, 
     currency: { type: String, default: "INR" },
     status: { 

@@ -146,6 +146,7 @@ exports.handleVerifyPayments= async (req,res)=>{
                 user_id: user._id,
                 mess_id: req.user.mess_id,
                 username: user.username,
+                transactionBy: req.user.role,
                 amount: amount,
                 currency: paymentData.currency,
                 status: paymentData.status,
@@ -260,8 +261,15 @@ exports.handleVerifyPaymentsDoneByOwners= async (req,res)=>{
     const session= await mongoose.startSession()
     try{
         session.startTransaction()
+        const role= req.user.role
         const mess_id= req.user.mess_id
         const { student_username, tokenConfigId }= req.body
+        
+            if (role != 'owner'){
+                await session.abortTransaction()
+                return res.status(403).json({success: false, message: "Not Authorized to access the resource."})
+            }
+
             if( !student_username ){
                 await session.abortTransaction()
                 return res.status(400).json({success: false, message: "No username provided."})
@@ -344,7 +352,8 @@ exports.handleVerifyPaymentsDoneByOwners= async (req,res)=>{
                 order_id: paymentData.order_id,
                 user_id: req.user.id,
                 mess_id: req.user.mess_id,
-                username: req.user.username,
+                username: user.username,
+                transactionBy: req.user.role,
                 amount: amount,
                 currency: paymentData.currency,
                 status: paymentData.status,

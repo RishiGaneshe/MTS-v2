@@ -47,13 +47,18 @@ exports.handleNotificationForOwner= async(req, res)=>{
 
 exports.handleGetOwnerTransactionsOfCash= async(req, res)=>{
     try{
-        const transactionData= await Transaction.find({ username: req.user.username, _id: req.user.id, mess_id: req.user.mess_id})
+        const role= req.user.role
+            if( role != 'owner'){
+                return res.status(404).json({ success: false, message: 'You are not authorize to access the function.' })
+            }
+            
+        const transactionData= await Transaction.find({ mess_id: req.user.mess_id, transactionBy: req.user.role }).sort({ createdAt: -1 })
             if(!transactionData) {
-                return res.status(404).json({ success: false, message: 'No cash Transactions/token issued by the user.' })
+                return res.status(404).json({ success: false, message: 'No Cash Transaction History found for owner.' })
             }
 
-        console.log("cash transaction data for owner sent successfully.")
-        return res.status(200).json({ success: true, count: notifications.length, data: transactionData })
+        console.log("Cash transaction history for owner sent successfully.")
+        return res.status(200).json({ success: true, count: transactionData.length, data: transactionData })
 
     }catch(err){
         console.error('Error fetching cash-transaction data :', err.message)
