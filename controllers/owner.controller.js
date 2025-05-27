@@ -217,21 +217,22 @@ exports.handleGetAllMessStudent= async(req, res)=>{
         }
 
         const students = await UserProfile.find(
-            { mess_id: mess_id, role: 'student' },
-            {
-              username: 1,
-              fullName: 1,
-              bio: 1,
-              profileImage: 1,
-              phone: 1,
-              profession: 1,
-              age: 1,
-              dateOfBirth: 1,
-              createdAt: 1
-            }
-          )
-          .sort({ createdAt: -1 })
-          .lean()
+                                    { mess_id: mess_id, role: 'student' },
+                                    {
+                                    user: 1,
+                                    username: 1,
+                                    fullName: 1,
+                                    bio: 1,
+                                    profileImage: 1,
+                                    phone: 1,
+                                    profession: 1,
+                                    age: 1,
+                                    dateOfBirth: 1,
+                                    createdAt: 1
+                                    }
+                                )
+                                .sort({ createdAt: -1 })
+                                .lean()
 
           console.log('All students profile sent successfully.')
           return res.status(200).json({ success: true, message: 'data sent successfully.', data: students })
@@ -243,6 +244,40 @@ exports.handleGetAllMessStudent= async(req, res)=>{
 }
 
 
+exports.handlePostFullStudentDetail= async(req, res)=>{
+    try{
+        const { student_id }= req.body
+        if( !student_id ){
+            return res.status(400).json({ success: false, message: 'Student Id is required' })
+        }
+
+        const studentData = await UserProfile.findOne({ user: student_id })
+                                    .populate({
+                                        path: 'user',
+                                        select: 'username email mess_id',
+                                        populate: {
+                                            path: 'tokens',
+                                            select: 'tokenCode issued_by expiryDate redeemed createdAt',
+                                            populate: {
+                                                path: 'tokenConfigId',
+                                                select: 'name price duration description',
+                                            }
+                                        }
+                                    })
+                                    .lean()
+        if(!studentData){
+            return res.status(404).json({ success: false, message: 'No Data present For the student' })
+        }
+
+        console.log('All Details sent for the student.')
+        return res.status(200).json({ success: true, message: 'data sent successfully.', data: studentData  })
+
+    }catch(err){
+        console.error('Error sending student data:', err.message)
+        return res.status(500).json({ success: false, message: 'Internal server error.' })
+    }
+}
+
 
 exports.handleGetAllIssuedTokensByMess= async(req, res)=>{
     try{
@@ -250,14 +285,14 @@ exports.handleGetAllIssuedTokensByMess= async(req, res)=>{
             if(!mess_id){
                 return res.status(403).json({ success: false, message : 'not authorized to access the resource.'})
             }
-        const tokens = await Token.find({ mess_id, redeemed: false })
+        const tokens = await Token.find({ mess_id  })
                             .populate({
                                 path: 'user',
-                                select: 'username email role mess_id tokens',
+                                select: 'username mess_id',
                             })
                             .populate({
                                 path: 'tokenConfigId',
-                                select: 'price duration',
+                                select: 'name price duration',
                             })
                             .sort({ createdAt: -1 });
 

@@ -115,8 +115,21 @@ json payload fields :  { not required }
 
 
 Function :   All Not Redeemed Issued tokens 
-Path     :  'https://student.studentshub.fun/owner/all-nrtokens'
+Path     :  'https://student.studentshub.fun/owner/all-tokens'
 Method   :   GET
 Protected:   Yes
 Role     :   Owner
 json payload fields :  { not required }
+
+
+                        28-05-2025
+
+Function :   Full Details Of Student for Student Card
+Path     :  'https://student.studentshub.fun/owner/student-details'
+Method   :   POST
+Protected:   Yes
+Role     :   Owner
+json payload fields :  { student_id }
+example  :    { 
+                 "student_id" : "6835abbb7cc7cce151906af0",
+              }

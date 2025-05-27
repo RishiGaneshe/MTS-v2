@@ -11,13 +11,15 @@ router.get("/get-all-students", Owner.handleGetAllMessStudent)                  
 
 router.get("/all-transactions", Owner.handleGetOwnerTransactionsOfCash)         // ( New )
 
-router.get("/all-nrtokens", Owner.handleGetAllIssuedTokensByMess)               // ( New )
+router.get("/all-tokens", Owner.handleGetAllIssuedTokensByMess)                 // ( New )
 
 
 
 router.post("/owner-dashboard", Owner.handleHelloOwner)
 
 router.post("/logout", Owner.handleOwnerLogout)
+
+router.post("/payment-by-owner", Common.handleVerifyPaymentsDoneByOwners)       // ( New )
 
 router.post("/add-token-price", Owner.handlePostCreateTokenPrice)               // ( New )
 
@@ -27,11 +29,13 @@ router.post("/delete-token-config", Owner.handleDeleteTokenConfiguration)       
 
 router.post("/delete-student", Owner.handlePostDeleteStudent)                   // ( New )
 
+router.post("/student-details", Owner.handlePostFullStudentDetail)              // ( New )
+
+
 
 
 router.post("/link-account", Common.PostCreateLinkedAccount)
 
-router.post("/payment-by-owner", Common.handleVerifyPaymentsDoneByOwners)       // ( New )
 
 
 
