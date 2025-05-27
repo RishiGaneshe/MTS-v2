@@ -85,6 +85,8 @@ example  :    {
               } 
 
 
+                           27-05-2025
+
 Function :   Delete Student
 Path     :  'https://student.studentshub.fun/owner/delete-student'
 Method   :   POST
@@ -98,6 +100,22 @@ example  :    {
 
 Function :   All Transactions by Owner
 Path     :  'https://student.studentshub.fun/owner/all-transactions'
+Method   :   GET
+Protected:   Yes
+Role     :   Owner
+json payload fields :  { not required }
+
+
+Function :   All Student Of Mess
+Path     :  'https://student.studentshub.fun/owner/get-all-students'
+Method   :   GET
+Protected:   Yes
+Role     :   Owner
+json payload fields :  { not required }
+
+
+Function :   All Not Redeemed Issued tokens 
+Path     :  'https://student.studentshub.fun/owner/all-nrtokens'
 Method   :   GET
 Protected:   Yes
 Role     :   Owner

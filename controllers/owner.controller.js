@@ -7,6 +7,7 @@ const crypto = require('crypto')
 const Transaction= require('../models/transactionSchema.js')
 const User= require('../models/signUpSchema.js')
 const UserProfile= require('../models/studentProfile.js')
+const Token= require('../models/tokenSchema.js')
 
 
 
@@ -231,11 +232,40 @@ exports.handleGetAllMessStudent= async(req, res)=>{
           )
           .sort({ createdAt: -1 })
           .lean()
-      
+
+          console.log('All students profile sent successfully.')
           return res.status(200).json({ success: true, message: 'data sent successfully.', data: students })
+
     }catch(err){
         console.error('Error sending registered student data:', err.message)
         return res.status(500).json({ success: false, message: 'Internal server error.' })
+    }
+}
+
+
+
+exports.handleGetAllIssuedTokensByMess= async(req, res)=>{
+    try{
+        const mess_id= req.user.mess_id
+            if(!mess_id){
+                return res.status(403).json({ success: false, message : 'not authorized to access the resource.'})
+            }
+        const tokens = await Token.find({ mess_id, redeemed: false })
+                            .populate({
+                                path: 'user',
+                                select: 'username email role mess_id tokens',
+                            })
+                            .populate({
+                                path: 'tokenConfigId',
+                                select: 'price duration',
+                            })
+                            .sort({ createdAt: -1 });
+
+        return res.status(200).json({ success: true, data: tokens })
+
+    }catch(err){
+        console.error("Error in Owner Token Sending function:", err.message)
+        return res.status(500).json({ success: false, message: "Internal Server Error." });
     }
 }
 
@@ -279,6 +309,6 @@ exports.handleOwnerLogout= async(req,res)=>{
 
     }catch(err){
         console.error("Error in Owner logout function:", err.message);
-        return res.status(500).json({ success: false, message: "Internal Server Error." });
+        return res.status(500).json({ success: false, message: "Internal Server Error." })
     }
 }

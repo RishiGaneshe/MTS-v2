@@ -11,6 +11,7 @@ router.get("/get-all-students", Owner.handleGetAllMessStudent)                  
 
 router.get("/all-transactions", Owner.handleGetOwnerTransactionsOfCash)         // ( New )
 
+router.get("/all-nrtokens", Owner.handleGetAllIssuedTokensByMess)               // ( New )
 
 
 
