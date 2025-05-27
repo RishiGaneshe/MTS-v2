@@ -8,6 +8,10 @@ const Transaction= require('../models/transactionSchema.js')
 const User= require('../models/signUpSchema.js')
 const UserProfile= require('../models/studentProfile.js')
 const Token= require('../models/tokenSchema.js')
+const PushNotificationToken= require('../models/pushNotificationToken.js')
+const { sendPushNotifications }= require('../services/sendPushNotification.js')
+const { notificationFunction }= require('../services/notificationService.js')
+const mongoose= require('mongoose')
 
 
 
@@ -69,6 +73,7 @@ exports.handleGetOwnerTransactionsOfCash= async(req, res)=>{
 
 
 exports.handlePostCreateTokenPrice= async(req, res)=>{
+    const session= await mongoose.startSession()
     try{
         const { tokenPrice, duration, name, description, metadata }= req.body
             if (typeof tokenPrice !== "number" || isNaN(tokenPrice) || tokenPrice < 0) {
@@ -83,29 +88,60 @@ exports.handlePostCreateTokenPrice= async(req, res)=>{
                 return res.status(400).json({ success: false, message: "Token name is required and must be a non-empty string." })
             }
 
-            const generatedId = crypto.randomInt(10000, 100000).toString()
+        const generatedId = crypto.randomInt(10000, 100000).toString()
 
-            const result = await TokenPrice.create({
-                id: generatedId,
-                mess_id: req.user.mess_id,
-                price: tokenPrice,
-                duration,
-                name: name.trim(),
-                description: description || "N/A",
-                metadata: metadata || {},
-            })
+        session.startTransaction()
 
-        console.log("Token price and duration set.")
+        const result = await TokenPrice.create([{
+            id: generatedId,
+            mess_id: req.user.mess_id,
+            price: tokenPrice,
+            duration,
+            name: name.trim(),
+            description: description || "N/A",
+            metadata: metadata || {},
+        }], {session})
+
+        let pushSent
+        let type= 'token-configs'
+        let notificationType= 'both'
+        let title= 'Added a New Token-Configuration'
+        let message= `Mess owner added new token-configuration in the Mess. Config Name: ${name} and Price : ${tokenPrice}`
+        let data = { id: result[0]._id, name: name.trim(), price: tokenPrice, duration: duration, description: description || "N/A" }
+
+        const ownerTokens= await PushNotificationToken.find({ userId: req.user.id, mess_id: req.user.mess_id })
+            if(ownerTokens.length){
+                const tokens = ownerTokens.map(entry => entry.token)
+                try{
+                    await sendPushNotifications(tokens, { title: title, body: message })
+                    pushSent= true
+                }catch(err){
+                    console.error(err.message)
+                    pushSent= false
+                }
+            }else{
+                console.log("No Push-Notification-Tokens found for Owner.")
+            }
+        
+        const result1= await notificationFunction(req.user.mess_id, req.user.id, req.user.username, type, title, message, data, notificationType, pushSent, session )
+        
+        await session.commitTransaction()
+        console.log(`Token Configuration Set for the Config ID: ${result[0]._id}`)
         return res.status(200).json({ success: true, message: `Token Configuration Added.`, data: result })
 
     }catch(err){
+        await session.abortTransaction()
         console.error("Error in Owner set token price function:", err.message)
         return res.status(500).json({ success: false, message: "Internal Server Error." })
+
+    }finally{
+        await session.endSession()
     }
 }
 
 
 exports.handlePostUpdateTokenConfiguration= async(req, res)=>{
+    const session= await mongoose.startSession()
     try {
         const { tokenPrice, duration, _id, name, description, metadata } = req.body;
 
@@ -125,6 +161,7 @@ exports.handlePostUpdateTokenConfiguration= async(req, res)=>{
             return res.status(400).json({ success: false, message: "Token name is required and must be a non-empty string." })
         }
 
+        session.startTransaction()
         const mess_id= req.user.mess_id 
         const updated = await TokenPrice.findOneAndUpdate(
             { _id, mess_id },
@@ -135,44 +172,107 @@ exports.handlePostUpdateTokenConfiguration= async(req, res)=>{
               description: description || "",
               metadata: metadata || {},
             },
-            { new: true }
+            { 
+                new: true, 
+                session
+            }
           )
-    
+          
         if (!updated) {
+            await session.abortTransaction()
             return res.status(404).json({ success: false, message: "Token configuration not found or unauthorized."})
         }
-    
-        console.log("Token price and duration updated.")
+        
+        let pushSent
+        let type= 'token-configs'
+        let notificationType= 'both'
+        let title= 'Updated a Existing Token-Configuration'
+        let message= `Mess owner updated a existing token-configuration in the Mess. Config Name: ${name} and Price : ${tokenPrice}`
+        let data = { id: updated._id, name: name.trim(), price: tokenPrice, duration: duration, description: description || "N/A" }
+
+        const ownerTokens= await PushNotificationToken.find({ userId: req.user.id, mess_id: req.user.mess_id })
+            if(ownerTokens.length){
+                const tokens = ownerTokens.map(entry => entry.token)
+                try{
+                    await sendPushNotifications(tokens, { title: title, body: message })
+                    pushSent= true
+                }catch(err){
+                    console.error(err.message)
+                    pushSent= false
+                }
+            }else{
+                console.log("No Push-Notification-Tokens found for Owner.")
+            }
+        
+        const result1= await notificationFunction(req.user.mess_id, req.user.id, req.user.username, type, title, message, data, notificationType, pushSent, session )
+
+        await session.commitTransaction()
+        console.log(`Token Configuration Updated for the Config ID: ${updated._id}`)
+
         return res.status(200).json({ success: true, message: "Token Configuration Updated.", data: updated })
 
       } catch (err) {
+        await session.abortTransaction()
         console.error("Error updating token price:", err.message);
         return res.status(500).json({ success: false, message: "Internal Server Error."})
+
+      } finally{
+        await session.endSession()
       }
 }
 
 
 exports.handleDeleteTokenConfiguration = async (req, res) => {
+  const session= await mongoose.startSession()
   try {
         const { _id } = req.body
-
-        if (!_id || typeof _id !== "string") {
-        return res.status(400).json({ success: false, message: "Missing or invalid token configuration ID (_id)." })
-        }
-
         const mess_id  = req.user.mess_id
-        const deleted = await TokenPrice.findOneAndDelete({ _id, mess_id })
 
-        if (!deleted) {
-        return res.status(404).json({ success: false, message: "Token configuration not found or unauthorized."})
-        }
+            if (!_id || typeof _id !== "string") {
+                return res.status(400).json({ success: false, message: "Missing or invalid token configuration ID (_id)." })
+            }
 
+        session.startTransaction()
+        const deleted = await TokenPrice.findOneAndDelete({ _id, mess_id }, { session })
+            if (!deleted) {
+                return res.status(404).json({ success: false, message: "Token configuration not found or unauthorized."})
+            }
+        
+        let pushSent
+        let type= 'token-configs'
+        let notificationType= 'both'
+        let title= 'Deleted a Token-Configuration'
+        let message= `Mess owner Deleted a token-configuration in the Mess. Config Name: ${deleted.name} and Price : ${deleted.tokenPrice}`
+        let data = { id: deleted._id, name: deleted.name.trim(), price: deleted.tokenPrice, duration: deleted.duration, description: deleted.description || "N/A" }
+
+        const ownerTokens= await PushNotificationToken.find({ userId: req.user.id, mess_id: req.user.mess_id })
+            if(ownerTokens.length){
+                const tokens = ownerTokens.map(entry => entry.token)
+                try{
+                    await sendPushNotifications(tokens, { title: title, body: message })
+                    pushSent= true
+                }catch(err){
+                    console.error(err.message)
+                    pushSent= false
+                }
+            }else{
+                console.log("No Push-Notification-Tokens found for Owner.")
+            }
+        
+        const result1= await notificationFunction(req.user.mess_id, req.user.id, req.user.username, type, title, message, data, notificationType, pushSent, session )
+
+        await session.commitTransaction()
         console.log("Token configuration deleted.")
+
         return res.status(200).json({ success: true, message: "Token configuration deleted successfully.", data: deleted })
 
   }catch (err) {
+        await session.abortTransaction()
         console.error("Error deleting token configuration:", err.message)
         return res.status(500).json({ success: false, message: "Internal Server Error."})
+
+  } finally{
+        await session.endSession()
   }
 }
 
