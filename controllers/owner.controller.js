@@ -278,6 +278,7 @@ exports.handleDeleteTokenConfiguration = async (req, res) => {
 
 
 exports.handlePostDeleteStudent= async(req, res)=>{
+    const session= await mongoose.startSession()
     try{
         const mess_id= req.user.mess_id
 
@@ -285,26 +286,61 @@ exports.handlePostDeleteStudent= async(req, res)=>{
             if( role != 'owner'){
                 return res.status(403).json({ success: false, message: 'Not authorize to perform this action.'})
             }
-
+        
         const { student_username }= req.body
             if(!student_username){
                 return res.status(404).json({ success: false, message: 'students username is required.'})
             }
 
-        const student = await User.findOne({ username: student_username, mess_id: mess_id, role: 'student', isActive: true })
+        session.startTransaction()
+        const student = await User.findOne(
+                            { username: student_username, mess_id: mess_id, role: 'student', isActive: true },
+                            null,
+                            { session }
+                        )
             if (!student) {
+                await session.abortTransaction()
                 return res.status(404).json({ success: false, message: 'Student not found or unauthorized access.' })
             }
 
         student.isActive = false
-        await student.save()
+        await student.save({ session })
 
+        let pushSent
+        let type= 'others'
+        let notificationType= 'both'
+        let title= 'Student Removed'
+        let message= `Mess Owner removed a student with username ${student.username} from the Mess.`
+        let data = { id: student._id, username: student.username, email: student.email }
+
+        const ownerTokens= await PushNotificationToken.find({ userId: req.user.id, mess_id: req.user.mess_id })
+            if(ownerTokens.length){
+                const tokens = ownerTokens.map(entry => entry.token)
+                try{
+                    await sendPushNotifications(tokens, { title: title, body: message })
+                    pushSent= true
+                }catch(err){
+                    console.error(err.message)
+                    pushSent= false
+                }
+            }else{
+                console.log("No Push-Notification-Tokens found for Owner.")
+            }
+        
+        const result1= await notificationFunction(req.user.mess_id, req.user.id, req.user.username, type, title, message, data, notificationType, pushSent, session )
+
+        await session.commitTransaction()
         console.log('Student Id De-activated successfully.')
+
         return res.status(200).json({ success: true, message: 'Student Id De-activated successfully.' })
 
     }catch(err){
+        await session.abortTransaction()
         console.error('Error deleting student:', err.message)
         return res.status(500).json({ success: false, message: 'Internal server error.' })
+
+    } finally{
+        await session.endSession()
     }
 }
 
