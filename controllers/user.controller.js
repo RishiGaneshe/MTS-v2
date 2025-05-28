@@ -10,6 +10,9 @@ const mongoose= require('mongoose')
 const Profile= require('../models/studentProfile.js')
 const path= require('path')
 const PreRegisteredStudent = require('../models/preRegistrationEmailSchema.js')
+const PushNotificationToken= require('../models/pushNotificationToken.js')
+const { sendPushNotifications }= require('../services/sendPushNotification.js')
+const { notificationFunction }= require('../services/notificationService.js')
 
 
 
@@ -171,6 +174,29 @@ exports.handlePostVerifyOTP = async (req, res) => {
                 { new: true, session }
               )
 
+            let pushSent
+            let type= 'others'
+            let notificationType= 'both'
+            let title= 'Student Registered Successfully.'
+            let message= `A Student with username : ${username} is registered successfully.`
+            let data = { username: username, email: email, mess_id: mess_id }
+    
+            // const ownerTokens= await PushNotificationToken.find({ userId: req.user.id, mess_id: req.user.mess_id })
+            //     if(ownerTokens.length){
+            //         const tokens = ownerTokens.map(entry => entry.token)
+            //         try{
+            //             await sendPushNotifications(tokens, { title: title, body: message })
+            //             pushSent= true
+            //         }catch(err){
+            //             console.error(err.message)
+            //             pushSent= false
+            //         }
+            //     }else{
+            //         console.log("No Push-Notification-Tokens found for Owner.")
+            //     }
+            
+            // const result1= await notificationFunction(req.user.mess_id, req.user.id, req.user.username, type, title, message, data, notificationType, pushSent, session )
+            
         }catch(err){
             throw err
         }
