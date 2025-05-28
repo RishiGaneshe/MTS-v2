@@ -9,6 +9,7 @@ const secret= process.env.Secret
 const mongoose= require('mongoose')
 const Profile= require('../models/studentProfile.js')
 const path= require('path')
+const PreRegisteredStudent = require('../models/preRegistrationEmailSchema.js')
 
 
 
@@ -41,6 +42,14 @@ exports.handleSendEmailForSignUp = async (req, res) => {
         if (password !== confirmPassword) {
             await session.abortTransaction()
             return res.status(400).json({ success: false, message: "Passwords do not match." })
+        }
+
+        if(role === 'student'){
+            const preRegistered = await PreRegisteredStudent.findOne({ email: email.toLowerCase().trim(), mess_id: mess_id, isRegistered: false }).session(session)
+            if (!preRegistered) {
+                await session.abortTransaction()
+                return res.status(403).json({ success: false, message: "Email not pre-registered. Contact the mess owner." })
+            }
         }
 
         const existingUser = await adminData.findOne({ 
@@ -156,15 +165,20 @@ exports.handlePostVerifyOTP = async (req, res) => {
                 mess_id: mess_id,
             }], { session })
 
+            await PreRegisteredStudent.findOneAndUpdate(
+                { email, mess_id },
+                { $set: { isRegistered: true } },
+                { new: true, session }
+              )
+
         }catch(err){
             throw err
         }
 
-        console.info("OTP verified. Registration complete")
-
         await session.commitTransaction()
+        console.info('OTP verified. Registration complete')
 
-        return res.status(200).json({ message: 'OTP verified. Registration complete.' })
+        return res.status(200).json({ success: true, message: 'OTP verified. Registration complete.' })
 
     } catch (error) {
         await session.abortTransaction()

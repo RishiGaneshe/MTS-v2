@@ -31,6 +31,8 @@ router.post("/delete-student", Owner.handlePostDeleteStudent)                   
 
 router.post("/student-details", Owner.handlePostFullStudentDetail)              // ( New )
 
+router.post("/add-student", Owner.handlePostAddStudentsToMess)                  // ( New )
+
 
 
 

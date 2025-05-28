@@ -133,3 +133,16 @@ json payload fields :  { student_id }
 example  :    { 
                  "student_id" : "6835abbb7cc7cce151906af0",
               }
+
+
+Function :   Add Student
+Path     :  'https://student.studentshub.fun/owner/add-student'
+Method   :   POST
+Protected:   Yes
+Role     :   Owner
+json payload fields :  { name, email, phone }
+example  :    {
+                "name": "Ravi Sharma",
+                "email": "ravi.sharma@example.com",
+                "phone": "9876543210"
+              }

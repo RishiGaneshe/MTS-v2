@@ -5,6 +5,7 @@ const Notification= require('../models/notificationForOwner.js')
 const TokenPrice= require('../models/messTokenPrice.js')
 const crypto = require('crypto')
 const Transaction= require('../models/transactionSchema.js')
+const PreRegisteredStudent= require('../models/preRegistrationEmailSchema.js')
 const User= require('../models/signUpSchema.js')
 const UserProfile= require('../models/studentProfile.js')
 const Token= require('../models/tokenSchema.js')
@@ -12,6 +13,7 @@ const PushNotificationToken= require('../models/pushNotificationToken.js')
 const { sendPushNotifications }= require('../services/sendPushNotification.js')
 const { notificationFunction }= require('../services/notificationService.js')
 const mongoose= require('mongoose')
+const { sendEmailPreRegisteredMessage } = require('../services/emailServices.js')
 
 
 
@@ -127,6 +129,7 @@ exports.handlePostCreateTokenPrice= async(req, res)=>{
         
         await session.commitTransaction()
         console.log(`Token Configuration Set for the Config ID: ${result[0]._id}`)
+
         return res.status(200).json({ success: true, message: `Token Configuration Added.`, data: result })
 
     }catch(err){
@@ -437,6 +440,91 @@ exports.handleGetAllIssuedTokensByMess= async(req, res)=>{
     }catch(err){
         console.error("Error in Owner Token Sending function:", err.message)
         return res.status(500).json({ success: false, message: "Internal Server Error." });
+    }
+}
+
+
+exports.handlePostAddStudentsToMess= async(req, res)=>{
+    const session= await mongoose.startSession()
+    try{
+        const { name, email, phone  } = req.body
+        const { id: userId, username, mess_id } = req.user || {}
+
+            if (!name || typeof name !== 'string' || name.trim().length === 0) {
+                return res.status(400).json({ success: false, message: 'Missing or invalid student name.' })
+            }
+            
+            if (!email || typeof email !== 'string' || !email.includes('@') || !email.includes('.')) {
+                return res.status(400).json({ success: false, message: 'Missing or invalid email address.' })
+            }
+            
+            if (!phone || typeof phone !== 'string' || phone.trim().length < 8) {
+                return res.status(400).json({ success: false, message: 'Missing or invalid phone number.' })
+            }
+            
+            if (!mess_id || typeof mess_id !== 'string' || mess_id.trim().length === 0) {
+                return res.status(400).json({ success: false, message: 'Missing or invalid mess ID.' })
+            }
+            
+            if (!userId || !username) {
+                return res.status(401).json({ success: false, message: 'Unauthorized. Missing user context.' })
+            }
+
+        session.startTransaction()
+
+        const existing = await PreRegisteredStudent.findOne({ email: email, mess_id: mess_id }).session(session)
+            if (existing) {
+                await session.abortTransaction()
+                return res.status(409).json({ success: false, message: 'This email is already pre-registered.' })
+            }
+        
+        const student = new PreRegisteredStudent({
+            name: name.trim(),
+            email: email.toLowerCase().trim(),
+            phone: phone.trim(),
+            mess_id: mess_id.trim(),
+            registeredBy: userId,
+            registererUsername: username,
+        })
+        await student.save({ session })
+
+        let pushSent
+        let type= 'others'
+        let notificationType= 'both'
+        let title= 'Student Added'
+        let message= `Mess Owner ${username} Added a student with email: ${ email } to the Mess.`
+        let data = { object_id: student._id, student_name: student.name, student_email: student.email, phone: student.phone, mess_id: mess_id, registeredBy: student.registererUsername }
+
+        const ownerTokens= await PushNotificationToken.find({ userId: userId, mess_id: mess_id })
+            if(ownerTokens.length){
+                const tokens = ownerTokens.map(entry => entry.token)
+                try{
+                    await sendPushNotifications(tokens, { title: title, body: message })
+                    pushSent= true
+                }catch(err){
+                    console.error(err.message)
+                    pushSent= false
+                }
+            }else{
+                console.log("No Push-Notification-Tokens found for Owner.")
+            }
+        
+        const result1= await notificationFunction(mess_id, userId, username, type, title, message, data, notificationType, pushSent, session )
+
+        await session.commitTransaction()
+        
+        await sendEmailPreRegisteredMessage(email, mess_id)
+        console.log('Student pre-registered successfully.')
+
+        res.status(201).json({ success: true, message: 'Student pre-registered successfully.', data: student })
+
+    }catch(err){
+        await session.abortTransaction()
+        console.error('Pre-registration error:', err.message)
+        return res.status(500).json({ success: false, message: 'Internal server error.' })
+
+    }finally{
+        await session.endSession()
     }
 }
 
