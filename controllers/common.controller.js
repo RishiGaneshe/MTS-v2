@@ -1,16 +1,17 @@
-const { createRazorpayInstance }= require('../services/rezorpayIntegration.js')
-const { getPaymentDetails, handleGetPaymentInfo }= require('../services/miscellaneousServices.js')
-const Token= require('../models/tokenSchema.js')
 const crypto= require('crypto')
-const User= require('../models/signUpSchema.js')
-const SubAccount= require('../models/o_subAccountsData.schema.js')
 const mongoose= require('mongoose')
-const Transaction= require('../models/transactionSchema.js')
-const Notification= require('../models/notificationForOwner.js')
-const PushNotificationToken= require('../models/pushNotificationToken.js')
-const { sendPushNotifications }= require('../services/sendPushNotification.js')
+const User= require('../models/signUpSchema.js')
+const Token= require('../models/tokenSchema.js')
 const TokenPrice= require('../models/messTokenPrice.js')
 const StudentProfile= require('../models/studentProfile.js')
+const Transaction= require('../models/transactionSchema.js')
+const Notification= require('../models/notificationForOwner.js')
+const SubAccount= require('../models/o_subAccountsData.schema.js')
+const PushNotificationToken= require('../models/pushNotificationToken.js')
+
+const { sendPushNotifications }= require('../services/sendPushNotification.js')
+const { createRazorpayInstance }= require('../services/rezorpayIntegration.js')
+const { getPaymentDetails, handleGetPaymentInfo }= require('../services/miscellaneousServices.js')
 
 
 
@@ -23,6 +24,58 @@ const RzInstance= async()=>{
     }   
 }
 RzInstance()
+
+
+
+exports.handleGetAllTokenConfigurations= async(req, res)=>{
+    try{
+        const mess_id = req.user.mess_id
+
+        if (!mess_id || typeof mess_id !== "string") {
+            return res.status(400).json({ success: false, message: "Invalid or missing mess_id in request." })
+        }
+
+        const tokenConfig = await TokenPrice.find({ mess_id })
+                                       .sort({ createdAt: -1 })
+                                       .lean()
+        if(!tokenConfig){
+            return res.status(404).json({ success: false, message: "No token Configuration present."})
+        }
+        
+        console.log(`Token Config sent for mess_id : ${mess_id}`)
+        return res.status(200).json({ success: true, message: "Token configurations retrieved successfully.", data: tokenConfig })
+
+    }catch(err){
+        console.log('Error in the Get Token Config API.', err.message)
+        return res.status(500).json({ success: false, message: "Internal Server Error."})
+    }
+}
+
+
+exports.handleGetBothRoleProfileData= async(req, res)=>{
+    try{
+        const username= req.user.username
+        const mess_id= req.user.mess_id
+        const user= req.user.id
+
+        if ( !user || !username || !mess_id) {
+            return res.status(400).json({ success: false, message: "userId, Username and mess_id are required." })
+        }
+
+        const userProfile = await StudentProfile.findOne({ user, username, mess_id }).lean()
+        if (!userProfile) {
+            return res.status(404).json({ success: false, message: "Profile not found." })
+        }
+
+        console.log("Send Profile Data.")
+        return res.status(200).json({ success: true, data: userProfile })
+
+    }catch(err){
+        console.error("Error fetching user profile:", err.message)
+        return res.status(500).json({ success: false, message: "Internal Server Error" })
+    }
+}
+
 
 
 
@@ -494,57 +547,6 @@ exports.handlePostPushNotificationToken = async (req, res) => {
     } catch (err) {
         console.error("Error saving push token:", err)
         return res.status(500).json({ success: false, message: "Internal server Error" })
-    }
-}
-
-
-exports.handleGetAllTokenConfigurations= async(req, res)=>{
-    try{
-        const mess_id = req.user.mess_id
-
-        if (!mess_id || typeof mess_id !== "string") {
-            return res.status(400).json({ success: false, message: "Invalid or missing mess_id in request." })
-        }
-
-        const tokenConfig = await TokenPrice.find({ mess_id })
-                                       .sort({ createdAt: -1 })
-                                       .lean()
-        if(!tokenConfig){
-            return res.status(404).json({ success: false, message: "No token Configuration present."})
-        }
-        
-        console.log(`Token Config sent for mess_id : ${mess_id}`)
-        return res.status(200).json({ success: true, message: "Token configurations retrieved successfully.", data: tokenConfig })
-
-    }catch(err){
-        console.log('Error in the Get Token Config API.', err.message)
-        return res.status(500).json({ success: false, message: "Internal Server Error."})
-    }
-}
-
-
-
-exports.handleGetBothRoleProfileData= async(req, res)=>{
-    try{
-        const username= req.user.username
-        const mess_id= req.user.mess_id
-        const user= req.user.id
-
-        if ( !user || !username || !mess_id) {
-            return res.status(400).json({ success: false, message: "userId, Username and mess_id are required." })
-        }
-
-        const userProfile = await StudentProfile.findOne({ user, username, mess_id }).lean()
-        if (!userProfile) {
-            return res.status(404).json({ success: false, message: "Profile not found." })
-        }
-
-        console.log("Send Profile Data.")
-        return res.status(200).json({ success: true, data: userProfile })
-
-    }catch(err){
-        console.error("Error fetching user profile:", err.message)
-        return res.status(500).json({ success: false, message: "Internal Server Error" })
     }
 }
 

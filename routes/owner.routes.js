@@ -15,6 +15,8 @@ router.get("/all-tokens", Owner.handleGetAllIssuedTokensByMess)                 
 
 router.get("/mess-profile", Owner.handleGetMessProfileData)                     // ( New )
 
+router.get("/redeemed-token-history", Owner.handleGetAllRedeemedTokensHistory)  // ( New )
+
 
 
 router.post("/owner-dashboard", Owner.handleHelloOwner)

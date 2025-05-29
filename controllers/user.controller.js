@@ -1,19 +1,20 @@
+const path= require('path')
 const crypto = require('crypto')
-const validator = require('validator')
-const adminData = require('../models/signUpSchema.js')
-const OTP= require('../models/otpSchema.js') 
-const { sendSignUpOTP, sendForgetPassOTP } = require('../services/emailServices.js')
-const { hashPassword, verifyPassword}= require('../services/passwordHashing.js')
-const { createJwtToken, verifyToken, decodeToken }= require('../services/jwtToken.js')
 const secret= process.env.Secret
 const mongoose= require('mongoose')
+const validator = require('validator')
+const OTP= require('../models/otpSchema.js') 
 const Profile= require('../models/studentProfile.js')
+const adminData = require('../models/signUpSchema.js')
 const MessProfile= require('../models/messProfileSchema.js')
-const path= require('path')
-const PreRegisteredStudent = require('../models/preRegistrationEmailSchema.js')
 const PushNotificationToken= require('../models/pushNotificationToken.js')
-const { sendPushNotifications }= require('../services/sendPushNotification.js')
+const PreRegisteredStudent = require('../models/preRegistrationEmailSchema.js')
+
 const { notificationFunction }= require('../services/notificationService.js')
+const { sendPushNotifications }= require('../services/sendPushNotification.js')
+const { hashPassword, verifyPassword}= require('../services/passwordHashing.js')
+const { sendSignUpOTP, sendForgetPassOTP } = require('../services/emailServices.js')
+const { createJwtToken, verifyToken, decodeToken }= require('../services/jwtToken.js')
 
 
 
@@ -26,6 +27,7 @@ exports.handleGetHomePage= async( req,res)=>{
         return res.status(500).json({ success: false, message: "Internal server error." })
     }
 }
+
 
 exports.handleSendEmailForSignUp = async (req, res) => {
     const session= await mongoose.startSession()
@@ -222,7 +224,6 @@ exports.handlePostVerifyOTP = async (req, res) => {
         await session.endSession()
     }
 }
-
 
 
 exports.handlePostUserLogin= async (req, res)=>{

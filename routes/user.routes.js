@@ -13,7 +13,7 @@ router.post("/login", User.handlePostUserLogin)
 
 router.post("/password-reset", User.handlePostSendPasswordResetOTP)
 
-router.post("/password-reset/verify-otp")
+router.post("/password-reset/verify-otp")            //  in-progress....
 
 
 module.exports= router

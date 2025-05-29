@@ -1,20 +1,23 @@
-const { verifyToken }= require('../services/jwtToken.js')
-const secret= process.env.Secret
-const { redisClient } = require("../services/redisConnection.js")
-const Notification= require('../models/notificationForOwner.js')
-const TokenPrice= require('../models/messTokenPrice.js')
 const crypto = require('crypto')
-const Transaction= require('../models/transactionSchema.js')
-const PreRegisteredStudent= require('../models/preRegistrationEmailSchema.js')
-const User= require('../models/signUpSchema.js')
-const UserProfile= require('../models/studentProfile.js')
+const secret= process.env.Secret
+const mongoose= require('mongoose')
 const Token= require('../models/tokenSchema.js')
+const User= require('../models/signUpSchema.js')
+const TokenPrice= require('../models/messTokenPrice.js')
+const UserProfile= require('../models/studentProfile.js')
+const Transaction= require('../models/transactionSchema.js')
+const MessProfile= require('../models/messProfileSchema.js')
+const Notification= require('../models/notificationForOwner.js')
+const TokenSubmission= require('../models/submittedTokenSchema.js')
 const PushNotificationToken= require('../models/pushNotificationToken.js')
+const PreRegisteredStudent= require('../models/preRegistrationEmailSchema.js')
+
+const { verifyToken }= require('../services/jwtToken.js')
+const { redisClient } = require("../services/redisConnection.js")
 const { sendPushNotifications }= require('../services/sendPushNotification.js')
 const { notificationFunction }= require('../services/notificationService.js')
-const mongoose= require('mongoose')
 const { sendEmailPreRegisteredMessage } = require('../services/emailServices.js')
-const MessProfile= require('../models/messProfileSchema.js')
+
 
 
 
@@ -73,6 +76,122 @@ exports.handleGetOwnerTransactionsOfCash= async(req, res)=>{
         return res.status(500).json({ success: false, message: 'Internal Server Error.' })
     }
 }
+
+
+exports.handleGetAllMessStudent= async(req, res)=>{
+    try{
+        const mess_id= req.user.mess_id
+        if(!mess_id){
+            return res.status(403).json({ success: false, message: 'Student not found or unauthorized access.' });
+        }
+
+        const students = await UserProfile.find(
+                                    { mess_id: mess_id, role: 'student' },
+                                    {
+                                    user: 1,
+                                    username: 1,
+                                    fullName: 1,
+                                    bio: 1,
+                                    profileImage: 1,
+                                    phone: 1,
+                                    profession: 1,
+                                    age: 1,
+                                    dateOfBirth: 1,
+                                    createdAt: 1
+                                    }
+                                )
+                                .sort({ createdAt: -1 })
+                                .lean()
+
+          console.log('All students profile sent successfully.')
+          return res.status(200).json({ success: true, message: 'data sent successfully.', data: students })
+
+    }catch(err){
+        console.error('Error sending registered student data:', err.message)
+        return res.status(500).json({ success: false, message: 'Internal server error.' })
+    }
+}
+
+
+exports.handleGetMessProfileData= async(req, res)=>{
+    try{
+        const username= req.user.username
+        const mess_id= req.user.mess_id
+        const id= req.user.id
+
+        if (!username || !mess_id || !id ) {
+            return res.status(400).json({ success: false, message: "Username , id and mess_id are required." })
+        }
+
+        const messProfile = await MessProfile.findOne({ ownerId: id, ownerUsername: username, mess_id }).lean()
+        if (!messProfile) {
+            return res.status(404).json({ success: false, message: "Profile not found." })
+        }
+
+        console.log("Mess profile data sent.")
+        return res.status(200).json({ success: true, message : 'Mess profile data sent.', data: messProfile })
+
+    }catch(err){
+        console.error("Error fetching Mess profile:", err.message)
+        return res.status(500).json({ success: false, message: "Internal Server Error" })
+    }
+}
+
+
+exports.handleGetAllIssuedTokensByMess= async(req, res)=>{
+    try{
+        const mess_id= req.user.mess_id
+            if(!mess_id){
+                return res.status(403).json({ success: false, message : 'not authorized to access the resource.'})
+            }
+        const tokens = await Token.find({ mess_id  })
+                            .populate({
+                                path: 'user',
+                                select: 'username mess_id',
+                            })
+                            .populate({
+                                path: 'tokenConfigId',
+                                select: 'name price duration',
+                            })
+                            .sort({ createdAt: -1 });
+
+        return res.status(200).json({ success: true, data: tokens })
+
+    }catch(err){
+        console.error("Error in Owner Token Sending function:", err.message)
+        return res.status(500).json({ success: false, message: "Internal Server Error." });
+    }
+}
+
+
+exports.handleGetAllRedeemedTokensHistory= async(req, res)=>{
+    try{
+        const userId= req.user.id
+        const username= req.user.username
+        const mess_id= req.user.mess_id
+  
+        if (!userId || !username || !mess_id) {
+            return res.status(400).json({ success: false, message: 'Not Authorized' })
+        }
+  
+        const submissions = await TokenSubmission.find({ username, mess_id })
+                                             .select('_id submissionId username mess_id tokenCount status submittedAt')
+                                             .sort({ submittedAt: -1 })
+                                             .lean()
+        if (submissions.length === 0) {
+            return res.status(404).json({ success: false, message: "No token submissions found." })
+        }
+  
+        console.log(`Token Submission data sent for ${mess_id}.`)
+        return res.status(200).json({ success: true, message: 'Token Submission data sent for ${mess_id}.', data: submissions })
+  
+    }catch(err){
+        console.error('Error fetching tokens submission data:', err.message)
+        return res.status(500).json({ success: false, message: 'Internal Server Error ' })
+    }
+}
+  
+
 
 
 exports.handlePostCreateTokenPrice= async(req, res)=>{
@@ -349,41 +468,6 @@ exports.handlePostDeleteStudent= async(req, res)=>{
 }
 
 
-exports.handleGetAllMessStudent= async(req, res)=>{
-    try{
-        const mess_id= req.user.mess_id
-        if(!mess_id){
-            return res.status(403).json({ success: false, message: 'Student not found or unauthorized access.' });
-        }
-
-        const students = await UserProfile.find(
-                                    { mess_id: mess_id, role: 'student' },
-                                    {
-                                    user: 1,
-                                    username: 1,
-                                    fullName: 1,
-                                    bio: 1,
-                                    profileImage: 1,
-                                    phone: 1,
-                                    profession: 1,
-                                    age: 1,
-                                    dateOfBirth: 1,
-                                    createdAt: 1
-                                    }
-                                )
-                                .sort({ createdAt: -1 })
-                                .lean()
-
-          console.log('All students profile sent successfully.')
-          return res.status(200).json({ success: true, message: 'data sent successfully.', data: students })
-
-    }catch(err){
-        console.error('Error sending registered student data:', err.message)
-        return res.status(500).json({ success: false, message: 'Internal server error.' })
-    }
-}
-
-
 exports.handlePostFullStudentDetail= async(req, res)=>{
     try{
         const { student_id }= req.body
@@ -415,32 +499,6 @@ exports.handlePostFullStudentDetail= async(req, res)=>{
     }catch(err){
         console.error('Error sending student data:', err.message)
         return res.status(500).json({ success: false, message: 'Internal server error.' })
-    }
-}
-
-
-exports.handleGetAllIssuedTokensByMess= async(req, res)=>{
-    try{
-        const mess_id= req.user.mess_id
-            if(!mess_id){
-                return res.status(403).json({ success: false, message : 'not authorized to access the resource.'})
-            }
-        const tokens = await Token.find({ mess_id  })
-                            .populate({
-                                path: 'user',
-                                select: 'username mess_id',
-                            })
-                            .populate({
-                                path: 'tokenConfigId',
-                                select: 'name price duration',
-                            })
-                            .sort({ createdAt: -1 });
-
-        return res.status(200).json({ success: true, data: tokens })
-
-    }catch(err){
-        console.error("Error in Owner Token Sending function:", err.message)
-        return res.status(500).json({ success: false, message: "Internal Server Error." });
     }
 }
 
@@ -530,31 +588,6 @@ exports.handlePostAddStudentsToMess= async(req, res)=>{
 }
 
 
-exports.handleGetMessProfileData= async(req, res)=>{
-    try{
-        const username= req.user.username
-        const mess_id= req.user.mess_id
-        const id= req.user.id
-
-        if (!username || !mess_id || !id ) {
-            return res.status(400).json({ success: false, message: "Username , id and mess_id are required." })
-        }
-
-        const messProfile = await MessProfile.findOne({ ownerId: id, ownerUsername: username, mess_id }).lean()
-        if (!messProfile) {
-            return res.status(404).json({ success: false, message: "Profile not found." })
-        }
-
-        console.log("Mess profile data sent.")
-        return res.status(200).json({ success: true, message : 'Mess profile data sent.', data: messProfile })
-
-    }catch(err){
-        console.error("Error fetching Mess profile:", err.message)
-        return res.status(500).json({ success: false, message: "Internal Server Error" })
-    }
-}
-
-
 exports.handlePostUpdateMessProfile= async(req, res)=>{
     const session = await mongoose.startSession()
     try{
@@ -608,7 +641,8 @@ exports.handlePostUpdateMessProfile= async(req, res)=>{
     }finally{
         session.endSession()
     }
-} 
+}
+
 
 exports.handleOwnerLogout= async(req,res)=>{
     try{

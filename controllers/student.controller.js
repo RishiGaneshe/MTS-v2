@@ -1,18 +1,19 @@
-const { verifyToken }= require('../services/jwtToken.js')
 const secret= process.env.Secret
-const { redisClient }= require('../services/redisConnection.js')
+const shortid = require('shortid')
 const mongoose= require('mongoose')
 const User= require('../models/signUpSchema.js')
 const Token= require('../models/tokenSchema.js')
-const { hashPassword, verifyPassword}= require('../services/passwordHashing.js')
 const Transaction= require('../models/transactionSchema.js')
+const StudentProfile= require('../models/studentProfile.js')
 const Notification= require('../models/notificationForOwner.js')
 const TokenSubmission= require('../models/submittedTokenSchema.js')
-const shortid = require('shortid')
-const StudentProfile= require('../models/studentProfile.js')
 const PushNotificationToken= require('../models/pushNotificationToken.js')
+
 const { admin }= require('../configs/fcm.config.js')
+const { verifyToken }= require('../services/jwtToken.js')
+const { redisClient }= require('../services/redisConnection.js')
 const { sendPushNotifications }= require('../services/sendPushNotification.js')
+const { hashPassword, verifyPassword}= require('../services/passwordHashing.js')
 
 
 
@@ -27,6 +28,182 @@ exports.handleHelloStudent= async(req,res)=>{
         return res.status(500).json({ success: false, message: "Internal Server Error" })
     }
 }
+
+
+exports.handleGetFunctionalTokens= async(req, res)=>{
+    try{
+        const userId = req.user.id
+        const mess_id= req.user.mess_id
+
+        if (!userId) {
+            return res.status(400).json({ success: false,  message: 'User ID is missing or invalid.' })
+        }
+
+        const user = await User.findById(userId).populate({
+            path: 'tokens',
+            match: { redeemed: false },
+            select: 'redeemed',
+        })
+
+        if (!user) {
+            console.log("User not found")
+            return res.status(404).json({ success: false, message: 'User not found.'})
+        }
+
+        if(!user.tokens){
+            console.log('No tokens for the user.')
+            return res.status(404).json({ success: false, message: 'No tokens for the user.'})
+        }
+
+        console.log("Token sent for User")
+        return res.status(200).json({ success: true, message: "Token Number attached in the response", totalTokens: user.tokens.length})
+    
+    }catch(err){
+        console.error("Error in Token Fetching API :", err.message)
+        return res.status(200).json({ success: true, error: "Internal Server Error", message: "Error at the server." })
+
+    }
+}
+
+
+exports.handleGetTokenData= async(req, res)=>{
+    try{
+        const userId = req.user.id
+
+        if (!userId) {
+            return res.status(400).json({ success: false,  message: 'User ID is missing or invalid.' })
+        }
+
+        const user = await User.findById(userId).populate({
+            path: 'tokens',
+            match: { redeemed: false },
+            options: { sort: { expiryDate: 1 } },
+            select: 'redeemed expiryDate',
+        })
+
+        if (!user) {
+            console.log("User not found")
+            return res.status(404).json({ success: false, message: 'User not found.'})
+        }
+
+        if(!user.tokens){
+            console.log('No tokens for the user.')
+            return res.status(404).json({ success: false, message: 'No tokens for the user.'})
+        }
+
+        console.log("Token Data sent for User")
+        return res.status(200).json({ success: true, message: "Token Data attached in the response", tokens: user.tokens})
+    
+    }catch(err){
+        console.error("Error in Token Data Sending API :", err.message)
+        return res.status(200).json({ success: true, error: "Internal Server Error", message: "Error at the server." })
+
+    }
+}
+
+
+exports.handleGetTokenHistory= async(req, res)=>{
+    try{
+        const  userId  = req.user.id
+        const mess_id= req.user.mess_id
+            if (!userId || !userId.match(/^[0-9a-fA-F]{24}$/) || !mess_id ) {
+                return res.status(400).json({ success: false, message: 'Invalid user ID' })
+            }
+
+        const tokens = await Token.find({ user: userId, mess_id : mess_id }).sort({ purchaseDate: -1 })
+            if (!tokens.length) {
+                return res.status(404).json({ success: false, message: 'No tokens found for this user' })
+            }
+        console.log("Token history sent successfully.")
+        return res.status(200).json({ success: true, count: tokens.length, tokens })
+
+    }catch(err){
+        console.error('Error fetching tokens history:', err)
+        return res.status(500).json({ success: false, message: 'Internal Server Error ' })
+    }
+}
+
+
+exports.handleGetTokenSubmissionData= async (req, res)=>{
+    try{
+        const userId= req.user.id
+        const username= req.user.username
+        const mess_id= req.user.mess_id
+
+        if (!userId || !username || !mess_id) {
+            return res.status(400).json({ success: false, message: "Username and Mess ID does not found" })
+        }
+
+        const submissions = await TokenSubmission.find({ username, mess_id })
+                                     .select('_id submissionId username mess_id tokenCount status submittedAt')
+                                     .sort({ submittedAt: -1 })
+                                     .lean()
+
+        if (submissions.length === 0) {
+            return res.status(404).json({ success: false, message: "No token submissions found." })
+        }
+         
+        console.log("Token Submission data sent.")
+        return res.status(200).json({ success: true, data: submissions })
+
+    }catch(err){
+        console.error('Error fetching tokens submission data:', err)
+        return res.status(500).json({ success: false, message: 'Internal Server Error ' })
+    }
+}
+
+
+exports.handleGetPaymentHistory= async(req, res)=>{
+    try{
+        const userId = req.user.id
+        const mess_id= req.user.mess_id
+            if (!mongoose.Types.ObjectId.isValid(userId)) {
+                return res.status(400).json({ success: false, message: "Invalid user ID" })
+            }
+
+            if (!mess_id) {
+                return res.status(400).json({ success: false, message: "Invalid Mess-ID." })
+            }
+
+        const transactions = await Transaction.find({ user_id: userId,  mess_id : mess_id }).sort({ createdAt: -1 })
+            if (!transactions.length) {
+                return res.status(404).json({ success: false, message: "No transactions found for this user" })
+            }
+
+        console.log("Transaction history sent successfully.")
+        return res.status(200).json({ success: true, count: transactions.length, transactions })
+
+    }catch(err){
+        console.error('Error fetching transaction history:', err)
+        return res.status(500).json({ success: false, message: 'Internal Server Error ' })
+    }
+}
+
+
+exports.handleGetProfileData= async(req, res)=>{
+    try{
+        const username= req.user.username
+        const mess_id= req.user.mess_id
+
+        if (!username || !mess_id) {
+            return res.status(400).json({ success: false, message: "Username and mess_id are required." })
+        }
+
+        const userProfile = await StudentProfile.findOne({ username, mess_id }).lean()
+        if (!userProfile) {
+            return res.status(404).json({ success: false, message: "Profile not found." })
+        }
+
+        console.log("Send Profile Data.")
+        return res.status(200).json({ success: true, data: userProfile })
+
+    }catch(err){
+        console.error("Error fetching user profile:", err.message)
+        return res.status(500).json({ success: false, message: "Internal Server Error" })
+    }
+}
+
+
 
 
 exports.handlePostTokenSubmission= async (req,res)=>{
@@ -174,182 +351,6 @@ exports.handlePostTokenSubmission= async (req,res)=>{
 
     } finally {
         session.endSession()
-    }
-}
-
-
-exports.handleGetFunctionalTokens= async(req, res)=>{
-    try{
-        const userId = req.user.id
-        const mess_id= req.user.mess_id
-
-        if (!userId) {
-            return res.status(400).json({ success: false,  message: 'User ID is missing or invalid.' })
-        }
-
-        const user = await User.findById(userId).populate({
-            path: 'tokens',
-            match: { redeemed: false },
-            select: 'redeemed',
-        })
-
-        if (!user) {
-            console.log("User not found")
-            return res.status(404).json({ success: false, message: 'User not found.'})
-        }
-
-        if(!user.tokens){
-            console.log('No tokens for the user.')
-            return res.status(404).json({ success: false, message: 'No tokens for the user.'})
-        }
-
-        console.log("Token sent for User")
-        return res.status(200).json({ success: true, message: "Token Number attached in the response", totalTokens: user.tokens.length})
-    
-    }catch(err){
-        console.error("Error in Token Fetching API :", err.message)
-        return res.status(200).json({ success: true, error: "Internal Server Error", message: "Error at the server." })
-
-    }
-}
-
-
-
-exports.handleGetTokenData= async(req, res)=>{
-    try{
-        const userId = req.user.id
-
-        if (!userId) {
-            return res.status(400).json({ success: false,  message: 'User ID is missing or invalid.' })
-        }
-
-        const user = await User.findById(userId).populate({
-            path: 'tokens',
-            match: { redeemed: false },
-            options: { sort: { expiryDate: 1 } },
-            select: 'redeemed expiryDate',
-        })
-
-        if (!user) {
-            console.log("User not found")
-            return res.status(404).json({ success: false, message: 'User not found.'})
-        }
-
-        if(!user.tokens){
-            console.log('No tokens for the user.')
-            return res.status(404).json({ success: false, message: 'No tokens for the user.'})
-        }
-
-        console.log("Token Data sent for User")
-        return res.status(200).json({ success: true, message: "Token Data attached in the response", tokens: user.tokens})
-    
-    }catch(err){
-        console.error("Error in Token Data Sending API :", err.message)
-        return res.status(200).json({ success: true, error: "Internal Server Error", message: "Error at the server." })
-
-    }
-}
-
-
-exports.handleGetTokenHistory= async(req, res)=>{
-    try{
-        const  userId  = req.user.id
-        const mess_id= req.user.mess_id
-            if (!userId || !userId.match(/^[0-9a-fA-F]{24}$/) || !mess_id ) {
-                return res.status(400).json({ success: false, message: 'Invalid user ID' })
-            }
-
-        const tokens = await Token.find({ user: userId, mess_id : mess_id }).sort({ purchaseDate: -1 })
-            if (!tokens.length) {
-                return res.status(404).json({ success: false, message: 'No tokens found for this user' })
-            }
-        console.log("Token history sent successfully.")
-        return res.status(200).json({ success: true, count: tokens.length, tokens })
-
-    }catch(err){
-        console.error('Error fetching tokens history:', err)
-        return res.status(500).json({ success: false, message: 'Internal Server Error ' })
-    }
-}
-
-
-exports.handleGetTokenSubmissionData= async (req, res)=>{
-    try{
-        const userId= req.user.id
-        const username= req.user.username
-        const mess_id= req.user.mess_id
-
-        if (!userId || !username || !mess_id) {
-            return res.status(400).json({ success: false, message: "Username and Mess ID does not found" })
-        }
-
-        const submissions = await TokenSubmission.find({ username, mess_id })
-                                     .select('_id submissionId username mess_id tokenCount status submittedAt')
-                                     .sort({ submittedAt: -1 })
-                                     .lean()
-
-        if (submissions.length === 0) {
-            return res.status(404).json({ success: false, message: "No token submissions found." })
-        }
-         
-        console.log("Token Submission data sent.")
-        return res.status(200).json({ success: true, data: submissions })
-
-    }catch(err){
-        console.error('Error fetching tokens submission data:', err)
-        return res.status(500).json({ success: false, message: 'Internal Server Error ' })
-    }
-}
-
-
-exports.handleGetPaymentHistory= async(req, res)=>{
-    try{
-        const userId = req.user.id
-        const mess_id= req.user.mess_id
-            if (!mongoose.Types.ObjectId.isValid(userId)) {
-                return res.status(400).json({ success: false, message: "Invalid user ID" })
-            }
-
-            if (!mess_id) {
-                return res.status(400).json({ success: false, message: "Invalid Mess-ID." })
-            }
-
-        const transactions = await Transaction.find({ user_id: userId,  mess_id : mess_id }).sort({ createdAt: -1 })
-            if (!transactions.length) {
-                return res.status(404).json({ success: false, message: "No transactions found for this user" })
-            }
-
-        console.log("Transaction history sent successfully.")
-        return res.status(200).json({ success: true, count: transactions.length, transactions })
-
-    }catch(err){
-        console.error('Error fetching transaction history:', err)
-        return res.status(500).json({ success: false, message: 'Internal Server Error ' })
-    }
-}
-
-
-
-exports.handleGetProfileData= async(req, res)=>{
-    try{
-        const username= req.user.username
-        const mess_id= req.user.mess_id
-
-        if (!username || !mess_id) {
-            return res.status(400).json({ success: false, message: "Username and mess_id are required." })
-        }
-
-        const userProfile = await StudentProfile.findOne({ username, mess_id }).lean()
-        if (!userProfile) {
-            return res.status(404).json({ success: false, message: "Profile not found." })
-        }
-
-        console.log("Send Profile Data.")
-        return res.status(200).json({ success: true, data: userProfile })
-
-    }catch(err){
-        console.error("Error fetching user profile:", err.message)
-        return res.status(500).json({ success: false, message: "Internal Server Error" })
     }
 }
 
