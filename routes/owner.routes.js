@@ -13,6 +13,8 @@ router.get("/all-transactions", Owner.handleGetOwnerTransactionsOfCash)         
 
 router.get("/all-tokens", Owner.handleGetAllIssuedTokensByMess)                 // ( New )
 
+router.get("/mess-profile", Owner.handleGetMessProfileData)                     // ( New )
+
 
 
 router.post("/owner-dashboard", Owner.handleHelloOwner)
@@ -32,6 +34,8 @@ router.post("/delete-student", Owner.handlePostDeleteStudent)                   
 router.post("/student-details", Owner.handlePostFullStudentDetail)              // ( New )
 
 router.post("/add-student", Owner.handlePostAddStudentsToMess)                  // ( New )
+
+router.post("/update-mess-profile", Owner.handlePostUpdateMessProfile)          // ( New )
 
 
 

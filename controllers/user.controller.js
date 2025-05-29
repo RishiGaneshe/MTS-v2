@@ -8,6 +8,7 @@ const { createJwtToken, verifyToken, decodeToken }= require('../services/jwtToke
 const secret= process.env.Secret
 const mongoose= require('mongoose')
 const Profile= require('../models/studentProfile.js')
+const MessProfile= require('../models/messProfileSchema.js')
 const path= require('path')
 const PreRegisteredStudent = require('../models/preRegistrationEmailSchema.js')
 const PushNotificationToken= require('../models/pushNotificationToken.js')
@@ -156,7 +157,7 @@ exports.handlePostVerifyOTP = async (req, res) => {
                 { $set: { isActive: true } },
                 { new: true, session }
               )
-              
+            
             await OTP.deleteOne({ email, mess_id }).session(session)
 
             await Profile.create([{
@@ -168,34 +169,40 @@ exports.handlePostVerifyOTP = async (req, res) => {
                 mess_id: mess_id,
             }], { session })
 
-            await PreRegisteredStudent.findOneAndUpdate(
-                { email, mess_id },
-                { $set: { isRegistered: true } },
-                { new: true, session }
-              )
+            const role= updatedAdmin.role
+                if(role === 'student'){
+                    await PreRegisteredStudent.findOneAndUpdate(
+                        { email, mess_id },
+                        { $set: { isRegistered: true } },
+                        { new: true, session }
+                    )
 
-            let pushSent
-            let type= 'others'
-            let notificationType= 'both'
-            let title= 'Student Registered Successfully.'
-            let message= `A Student with username : ${username} is registered successfully.`
-            let data = { username: username, email: email, mess_id: mess_id }
-    
-            // const ownerTokens= await PushNotificationToken.find({ userId: req.user.id, mess_id: req.user.mess_id })
-            //     if(ownerTokens.length){
-            //         const tokens = ownerTokens.map(entry => entry.token)
-            //         try{
-            //             await sendPushNotifications(tokens, { title: title, body: message })
-            //             pushSent= true
-            //         }catch(err){
-            //             console.error(err.message)
-            //             pushSent= false
-            //         }
-            //     }else{
-            //         console.log("No Push-Notification-Tokens found for Owner.")
-            //     }
-            
-            // const result1= await notificationFunction(req.user.mess_id, req.user.id, req.user.username, type, title, message, data, notificationType, pushSent, session )
+                    let pushSent= false
+                    let type= 'security'
+                    let notificationType= 'in-app'
+                    let title= 'Account Created'
+                    let message= `User Account created successfully with username : ${updatedAdmin.username}.`
+                    let data = { username: updatedAdmin.username, email: email, mess_id: mess_id }
+        
+                    const result1= await notificationFunction(mess_id, updatedAdmin._id, updatedAdmin.username, type, title, message, data, notificationType, pushSent, session )
+
+                }else if(role === 'owner'){
+                    await MessProfile.create([{
+                        ownerId: updatedAdmin._id,
+                        ownerUsername: updatedAdmin.username,
+                        mess_id: mess_id,
+                        email: email
+                    }], { session })
+
+                    let pushSent= false
+                    let type= 'security'
+                    let notificationType= 'in-app'
+                    let title= 'Account Created'
+                    let message= `Mess Owner Account created successfully with username : ${updatedAdmin.username}.`
+                    let data = { username: updatedAdmin.username, email: email, mess_id: mess_id }
+        
+                    const result1= await notificationFunction(mess_id, updatedAdmin._id, updatedAdmin.username, type, title, message, data, notificationType, pushSent, session )
+                }
             
         }catch(err){
             throw err
@@ -206,7 +213,7 @@ exports.handlePostVerifyOTP = async (req, res) => {
 
         return res.status(200).json({ success: true, message: 'OTP verified. Registration complete.' })
 
-    } catch (error) {
+    } catch (err) {
         await session.abortTransaction()
         console.error('Error verifying OTP.'+ err.message)
         return res.status(500).json({ success: false, message: 'Error verifying OTP.' })

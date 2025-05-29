@@ -146,3 +146,58 @@ example  :    {
                 "email": "ravi.sharma@example.com",
                 "phone": "9876543210"
               }
+
+
+Function :   Get Owner Profile 
+Path     :  'https://student.studentshub.fun/common/profile-data'
+Method   :   Get
+Protected:   Yes
+Role     :   Owner
+json payload fields :  { not required }
+
+
+Function :   Update Owner Profile 
+Path     :  'https://student.studentshub.fun/common/profile-update'
+Method   :   PATCH
+Protected:   Yes
+Role     :   Owner
+json payload fields :  { "fullName", "bio", "profileImage", "phone", "address", "profession", "age", "dateOfBirth" }
+example  :   {
+                "fullName": "Ravi Sharma",
+                "bio": "Passionate cook and proud mess owner serving healthy meals.",
+                "profileImage": "https://example.com/profiles/ravi.jpg",
+                "phone": "+91-9876543210",
+                "address": "Flat 203, Sunrise Apartments, MG Road, Bengaluru, Karnataka",
+                "profession": "Mess Owner",
+                "age": 35,
+                "dateOfBirth": "1989-04-15"
+             }
+
+            
+                    29-05-2025
+
+
+Function :   Created Get Mess Profile 
+Path     :  'https://student.studentshub.fun/owner/mess-profile'
+Method   :   GET
+Protected:   Yes
+Role     :   Owner
+json payload fields :  { Not Required }
+
+
+Function :   Update Mess Profile 
+Path     :  'https://student.studentshub.fun/owner/update-mess-profile'
+Method   :   POST
+Protected:   Yes
+Role     :   Owner
+json payload fields :  { "messName", "messAddress", "messContactNumber", "messType", "messImage", "description" }
+example  :     {
+                  "messName": "Green Leaf Mess",
+                  "messAddress": "123 Food Street, Sector 12, Pune, Maharashtra",
+                  "messContactNumber": "+91-9876543210",
+                  "messType": "Veg",
+                  "messImage": "https://example.com/images/mess-cover.jpg",
+                  "description": "A clean, hygienic, and affordable vegetarian mess providing home-style meals to students and professionals."
+               }
+
+              

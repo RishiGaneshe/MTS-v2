@@ -14,6 +14,7 @@ const { sendPushNotifications }= require('../services/sendPushNotification.js')
 const { notificationFunction }= require('../services/notificationService.js')
 const mongoose= require('mongoose')
 const { sendEmailPreRegisteredMessage } = require('../services/emailServices.js')
+const MessProfile= require('../models/messProfileSchema.js')
 
 
 
@@ -189,7 +190,7 @@ exports.handlePostUpdateTokenConfiguration= async(req, res)=>{
         let pushSent
         let type= 'token-configs'
         let notificationType= 'both'
-        let title= 'Updated a Existing Token-Configuration'
+        let title= 'Updated Existing Token-Configuration'
         let message= `Mess owner updated a existing token-configuration in the Mess. Config Name: ${name} and Price : ${tokenPrice}`
         let data = { id: updated._id, name: name.trim(), price: tokenPrice, duration: duration, description: description || "N/A" }
 
@@ -245,7 +246,7 @@ exports.handleDeleteTokenConfiguration = async (req, res) => {
         let type= 'token-configs'
         let notificationType= 'both'
         let title= 'Deleted a Token-Configuration'
-        let message= `Mess owner Deleted a token-configuration in the Mess. Config Name: ${deleted.name} and Price : ${deleted.tokenPrice}`
+        let message= `Mess owner Deleted a token-configuration in the Mess. Config Name: ${deleted.name} and Price : ${deleted.price}`
         let data = { id: deleted._id, name: deleted.name.trim(), price: deleted.tokenPrice, duration: deleted.duration, description: deleted.description || "N/A" }
 
         const ownerTokens= await PushNotificationToken.find({ userId: req.user.id, mess_id: req.user.mess_id })
@@ -528,6 +529,86 @@ exports.handlePostAddStudentsToMess= async(req, res)=>{
     }
 }
 
+
+exports.handleGetMessProfileData= async(req, res)=>{
+    try{
+        const username= req.user.username
+        const mess_id= req.user.mess_id
+        const id= req.user.id
+
+        if (!username || !mess_id || !id ) {
+            return res.status(400).json({ success: false, message: "Username , id and mess_id are required." })
+        }
+
+        const messProfile = await MessProfile.findOne({ ownerId: id, ownerUsername: username, mess_id }).lean()
+        if (!messProfile) {
+            return res.status(404).json({ success: false, message: "Profile not found." })
+        }
+
+        console.log("Mess profile data sent.")
+        return res.status(200).json({ success: true, message : 'Mess profile data sent.', data: messProfile })
+
+    }catch(err){
+        console.error("Error fetching Mess profile:", err.message)
+        return res.status(500).json({ success: false, message: "Internal Server Error" })
+    }
+}
+
+
+exports.handlePostUpdateMessProfile= async(req, res)=>{
+    const session = await mongoose.startSession()
+    try{
+        const id= req.user.id
+        const updates= req.body
+        const mess_id = req.user.mess_id
+        const username = req.user.username
+
+        if ( !username || !mess_id || !id ) {
+            return res.status(400).json({ success: false, message: "Required Data is not present" })
+        }
+
+        const allowedFields = [
+            "messName", "messAddress", "messContactNumber", "messType", "messImage", "description"
+        ]
+
+        const updateFields = {}
+        for (const key of Object.keys(updates)) {
+            if (allowedFields.includes(key)) {
+                updateFields[key] = updates[key];
+            }
+        }
+
+        if (Object.keys(updateFields).length === 0) {
+            return res.status(400).json({ success: false, message: "No valid fields provided for update." })
+        }
+
+        session.startTransaction()
+        const updatedProfile = await MessProfile.findOneAndUpdate(
+            { ownerId: id, ownerUsername: username, mess_id },
+            { $set: updateFields },
+            { new: true, session }
+        ).lean()
+
+        if (!updatedProfile) {
+            await session.abortTransaction();
+            return res.status(404).json({ success: false, message: "Mess Profile not found." })
+        }
+
+        console.log("Mess Profile Updated Successfully.")
+        await session.commitTransaction()
+        return res.status(200).json({ success: true, message: "Mess Profile updated successfully.", data: updatedProfile })
+        
+    }catch(err){
+        if (session.inTransaction()) {
+            await session.abortTransaction();
+        }
+        console.error("Error updating mess profile:", err.message)
+        return res.status(500).json({ success: false, message: "Internal Server Error" })
+
+    }finally{
+        session.endSession()
+    }
+} 
 
 exports.handleOwnerLogout= async(req,res)=>{
     try{
