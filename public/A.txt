@@ -201,3 +201,27 @@ example  :     {
                }
 
               
+                      30-05-2025
+
+Function :   Get Stats Of Users 
+Path     :  'https://student.studentshub.fun/owner/stats-mess-students'
+Method   :   GET
+Protected:   Yes
+Role     :   Owner
+json payload fields :  { Not Required }
+
+
+Function :   Get Stats Of Tokens 
+Path     :  'https://student.studentshub.fun/owner/stats-mess-tokens'
+Method   :   GET
+Protected:   Yes
+Role     :   Owner
+json payload fields :  { Not Required }
+
+
+Function :   Get Stats Of Transaction
+Path     :  'https://student.studentshub.fun/owner/stats-mess-transactions'
+Method   :   GET
+Protected:   Yes
+Role     :   Owner
+json payload fields :  { Not Required }

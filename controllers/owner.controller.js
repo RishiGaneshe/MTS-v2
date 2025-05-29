@@ -532,9 +532,11 @@ exports.handlePostAddStudentsToMess= async(req, res)=>{
         session.startTransaction()
 
         const existing = await PreRegisteredStudent.findOne({ email: email, mess_id: mess_id }).session(session)
-            if (existing) {
+        const exixting1= await User.findOne({ email: email, mess_id: mess_id}).session(session)
+
+            if (existing || exixting1) {
                 await session.abortTransaction()
-                return res.status(409).json({ success: false, message: 'This email is already pre-registered.' })
+                return res.status(409).json({ success: false, message: 'This email is already registered with this mess' })
             }
         
         const student = new PreRegisteredStudent({
@@ -641,6 +643,319 @@ exports.handlePostUpdateMessProfile= async(req, res)=>{
     }finally{
         session.endSession()
     }
+}
+
+
+exports.handleGetTodaysStatsForMess= async(req, res)=>{
+    try {
+        const  mess_id  = req.user.mess_id
+    
+        const startOfDay = new Date()
+        startOfDay.setHours(0, 0, 0, 0)
+    
+        const endOfDay = new Date()
+        endOfDay.setHours(23, 59, 59, 999)
+    
+        const tokensSubmittedToday = await Token.countDocuments({
+          mess_id,
+          redeemed: true,
+          updatedAt: { $gte: startOfDay, $lte: endOfDay }
+        })
+    
+        const studentsAgg = await Token.aggregate([
+          {
+            $match: {
+              mess_id,
+              redeemed: true,
+              updatedAt: { $gte: startOfDay, $lte: endOfDay }
+            }
+          },
+          {
+            $group: {
+              _id: '$user'
+            }
+          },
+          {
+            $count: 'studentCount'
+          }
+        ]);
+        const studentsSubmittedToday = studentsAgg[0]?.studentCount || 0
+    
+        const tokensIssuedToday = await Token.countDocuments({
+          mess_id,
+          createdAt: { $gte: startOfDay, $lte: endOfDay }
+        });
+    
+        return res.json({ success: true, message : `Today's Stats sent`,
+          tokensSubmittedToday,
+          studentsSubmittedToday,
+          tokensIssuedToday
+        })
+    
+      } catch (err) {
+        console.error('Error fetching token stats:', err.message)
+        return res.status(500).json({ success: false, message: 'Internal server error' });
+      }
+}
+
+
+exports.handleGetStatsForStudent= async(req, res)=>{
+    try {
+        const mess_id = req.user.mess_id
+            if (!mess_id) {
+                return res.status(400).json({ error: 'mess_id is required' })
+            }
+    
+        const totalRegisteredStudents = await PreRegisteredStudent.countDocuments({ mess_id })
+    
+        const inactiveStudents = await PreRegisteredStudent.countDocuments({ mess_id, isRegistered: false })
+    
+        const activeStudents = totalRegisteredStudents - inactiveStudents
+    
+        const activeVsInactiveRatio = totalRegisteredStudents === 0 ? 0 : (activeStudents / totalRegisteredStudents).toFixed(2);
+    
+        const studentsWithNoTokens = await User.aggregate([
+          { $match: { role: 'student', mess_id } },
+          {
+            $lookup: {
+              from: 'tokens',
+              localField: '_id',
+              foreignField: 'user',
+              as: 'tokens'
+            }
+          },
+          {
+            $addFields: {
+              validTokens: {
+                $filter: {
+                  input: '$tokens',
+                  as: 'token',
+                  cond: {
+                    $and: [
+                      { $gt: ['$$token.expiryDate', new Date()] }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          {
+            $match: { $expr: { $eq: [{ $size: '$validTokens' }, 0] } }
+          },
+          { $count: 'studentsWithNoTokens' }
+        ])
+    
+        const topTokenConsumers = await Transaction.aggregate([
+          { $match: { mess_id, status: 'captured' } },
+          {
+            $group: {
+              _id: '$user_id',
+              totalTokensPurchased: { $sum: '$tokens_purchased' }
+            }
+          },
+          { $sort: { totalTokensPurchased: -1 } },
+          { $limit: 5 },
+          {
+            $lookup: {
+              from: 'users',
+              localField: '_id',
+              foreignField: '_id',
+              as: 'user'
+            }
+          },
+          { $unwind: '$user' },
+          {
+            $project: {
+              _id: 0,
+              userId: '$user._id',
+              username: '$user.username',
+              totalTokensPurchased: 1
+            }
+          }
+        ])
+    
+        return res.status(200).json({success: true, message:'User Stats Sent successfull',
+          mess_id,
+          totalRegisteredStudents,
+          inactiveStudents,
+          activeStudents,
+          activeVsInactiveRatio: parseFloat(activeVsInactiveRatio),
+          studentsWithNoTokens: studentsWithNoTokens[0]?.studentsWithNoTokens || 0,
+          topTokenConsumers
+        })
+    
+      } catch (err) {
+        console.error('Error fetching student stats:', err);
+        res.status(500).json({ success: false, message: 'Internal server error' })
+      }
+}
+
+
+exports.handleGetStatsForMessTokens= async(req, res)=>{
+    try {
+        const mess_id  = req.user.mess_id
+        if (!mess_id) return res.status(400).json({ success: false, message: 'Not Authorized.' })
+    
+        const now = new Date()
+    
+        const totalTokensIssued = await Token.countDocuments({ mess_id })
+    
+        const totalTokensRedeemed = await Token.countDocuments({ mess_id, redeemed: true })
+    
+        const totalTokensUnredeemed = await Token.countDocuments({ mess_id, redeemed: false })
+    
+        const expiredTokens = await Token.countDocuments({ mess_id, expiryDate: { $lt: now } })
+    
+        const activeTokens = await Token.countDocuments({
+          mess_id,
+          redeemed: false,
+          expiryDate: { $gte: now }
+        })
+        
+        const activeStudentsCount = await User.countDocuments({
+          mess_id,
+          role: 'student',
+          isActive: true
+        })
+    
+        const avgTokensPerStudent = activeStudentsCount === 0
+          ? 0
+          : parseFloat((totalTokensIssued / activeStudentsCount).toFixed(2))
+    
+        const mostActiveIssuerAgg = await Token.aggregate([
+          { $match: { mess_id } },
+          {
+            $group: {
+              _id: '$issued_by',
+              count: { $sum: 1 },
+              issuerRole: { $first: '$issuer_role' }
+            }
+          },
+          { $sort: { count: -1 } },
+          { $limit: 1 }
+        ]);
+    
+        const mostActiveIssuer = mostActiveIssuerAgg[0] || null
+        
+        console.log('Token stats sent for mess')
+        return res.status(200).json({ success: true, message: 'Token stats sent for mess.',
+          mess_id,
+          totalTokensIssued,
+          totalTokensRedeemed,
+          totalTokensUnredeemed,
+          expiredTokens,
+          activeTokens,
+          avgTokensPerStudent,
+          mostActiveIssuer
+        })
+      } catch (err) {
+        console.error('Error in getTokenStats:', err.message)
+        res.status(500).json({ success: false, message: 'Internal server error'})
+      }
+}
+
+
+exports.handleGetStatsOfTransaction= async(req, res)=>{
+    try {
+        const mess_id= req.user.mess_id 
+        if (!mess_id) return res.status(400).json({ error: 'mess_id is required' })
+    
+        const todayStart = new Date()
+        todayStart.setHours(0, 0, 0, 0)
+    
+        const totalEarningsAgg = await Transaction.aggregate([
+          { $match: { mess_id, status: 'captured' } },
+          { $group: { _id: null, total: { $sum: '$amount' } } }
+        ])
+        const totalEarnings = totalEarningsAgg[0]?.total || 0
+    
+        const todayEarningsAgg = await Transaction.aggregate([
+          {
+            $match: {
+              mess_id,
+              status: 'captured',
+              createdAt: { $gte: todayStart }
+            }
+          },
+          { $group: { _id: null, total: { $sum: '$amount' } } }
+        ])
+        const todayEarnings = todayEarningsAgg[0]?.total || 0
+    
+        const refundAgg = await Transaction.aggregate([
+          { $match: { mess_id, status: 'refunded' } },
+          { $group: { _id: null, total: { $sum: '$amount' } } }
+        ]);
+        const totalRefunds = refundAgg[0]?.total || 0
+    
+        const pendingPayments = await Transaction.countDocuments({
+          mess_id,
+          status: 'created'
+        })
+    
+        const avgPriceAgg = await Transaction.aggregate([
+          { $match: { mess_id, tokens_purchased: { $gt: 0 } } },
+          {
+            $project: {
+              tokenPrice: { $divide: ['$amount', '$tokens_purchased'] }
+            }
+          },
+          {
+            $group: {
+              _id: null,
+              averageTokenPrice: { $avg: '$tokenPrice' }
+            }
+          }
+        ]);
+        const averageTokenPrice = parseFloat((avgPriceAgg[0]?.averageTokenPrice || 0).toFixed(2))
+    
+        const tokenRevenueBreakdown = await Transaction.aggregate([
+          { $match: { mess_id, status: 'captured' } },
+          {
+            $group: {
+              _id: '$tokenConfigId',
+              totalRevenue: { $sum: '$amount' },
+              totalTokens: { $sum: '$tokens_purchased' },
+              transactionCount: { $sum: 1 }
+            }
+          },
+          {
+            $lookup: {
+              from: 'tokenprices',
+              localField: '_id',
+              foreignField: '_id',
+              as: 'tokenInfo'
+            }
+          },
+          {
+            $unwind: {
+              path: '$tokenInfo',
+              preserveNullAndEmptyArrays: true
+            }
+          },
+          {
+            $project: {
+              tokenConfigId: '$_id',
+              tokenType: '$tokenInfo.name',
+              totalRevenue: 1,
+              totalTokens: 1,
+              transactionCount: 1
+            }
+          }
+        ])
+    
+        res.status(200).json({ success: true, message: 'Transaction Stats sent for mess.',
+          mess_id,
+          totalEarnings,
+          todayEarnings,
+          totalRefunds,
+          pendingPayments,
+          averageTokenPrice,
+          tokenRevenueBreakdown
+        })
+      } catch (err) {
+        console.error('Error in getTransactionStats:', err.message)
+        res.status(500).json({ success: false, message: 'Internal Server Error' })
+      }
 }
 
 

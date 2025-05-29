@@ -17,6 +17,14 @@ router.get("/mess-profile", Owner.handleGetMessProfileData)                     
 
 router.get("/redeemed-token-history", Owner.handleGetAllRedeemedTokensHistory)  // ( New )
 
+router.get("/stats-todays", Owner.handleGetTodaysStatsForMess)        // ( New )
+
+router.get("/stats-mess-students", Owner.handleGetStatsForStudent)              // ( New )
+
+router.get("/stats-mess-tokens", Owner.handleGetStatsForMessTokens)             // ( New )
+
+router.get("/stats-mess-transactions", Owner.handleGetStatsOfTransaction)       // ( New )
+
 
 
 router.post("/owner-dashboard", Owner.handleHelloOwner)
