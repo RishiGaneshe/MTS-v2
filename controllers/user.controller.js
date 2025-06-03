@@ -306,7 +306,15 @@ exports.handlePostSendPasswordResetOTP= async(req, res)=>{
 
 
 exports.handlePostGoogleAuth= async(req, res)=>{
-    const { idToken, mess_id, role } = req.body
+
+    const authHeader = req.headers.authorization
+        if (!authHeader || !authHeader.startsWith("Bearer ")) {
+            return res.status(401).json({ success: false, message: "Missing or invalid Authorization header" });
+        }
+
+    const idToken = authHeader.split(" ")[1]
+
+    const { mess_id, role } = req.body
 
     if (!idToken || !mess_id || !role) {
         return res.status(400).json({ success: false, message: "Missing fields" })
