@@ -13,6 +13,8 @@ router.post("/login", User.handlePostUserLogin)
 
 router.post("/password-reset", User.handlePostSendPasswordResetOTP)
 
+router.post("/google-auth", User.handlePostGoogleAuth)
+
 router.post("/password-reset/verify-otp")            //  in-progress....
 
 

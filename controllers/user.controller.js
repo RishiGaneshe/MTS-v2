@@ -16,6 +16,9 @@ const { hashPassword, verifyPassword}= require('../services/passwordHashing.js')
 const { sendSignUpOTP, sendForgetPassOTP } = require('../services/emailServices.js')
 const { createJwtToken, verifyToken, decodeToken }= require('../services/jwtToken.js')
 
+const { OAuth2Client } = require('google-auth-library')
+const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID)
+
 
 
 
@@ -301,3 +304,81 @@ exports.handlePostSendPasswordResetOTP= async(req, res)=>{
     }
 }
 
+
+exports.handlePostGoogleAuth= async(req, res)=>{
+    const { idToken, mess_id, role } = req.body
+
+    if (!idToken || !mess_id || !role) {
+        return res.status(400).json({ success: false, message: "Missing fields" })
+    }
+
+    let payload
+    try {
+        const ticket = await client.verifyIdToken({
+            idToken,
+            audience: process.env.GOOGLE_CLIENT_ID,
+        })
+        payload = ticket.getPayload()
+    } catch (err) {
+        return res.status(401).json({ success: false, message: "Invalid Google token" })
+    }
+
+    const { email, name } = payload
+
+    const session= await mongoose.startSession()
+    try {
+        session.startTransaction()
+
+        let user = await adminData.findOne({ email, mess_id, role })
+            if (!user) {
+                const username = generateUsername(name)
+                user = await adminData.create([{
+                    email,
+                    username,
+                    mess_id,
+                    role,
+                    isActive: true,
+                    password: '1234567890'
+                }], { session })
+
+                await Profile.create([{
+                    user: user._id,
+                    username,
+                    email,
+                    mess_id,
+                    isActive: true,
+                    role
+                }], { session })
+
+                await MessProfile.create([{
+                    ownerId: user._id,
+                    ownerUsername: username,
+                    mess_id: mess_id,
+                    email: email
+                }], { session })
+
+                let pushSent= false
+                let type= 'security'
+                let notificationType= 'in-app'
+                let title= 'Account Created'
+                let message= `Mess Owner Account created successfully with username : ${updatedAdmin.username}.`
+                let data = { username: updatedAdmin.username, email: email, mess_id: mess_id }
+
+                const result1= await notificationFunction(mess_id, updatedAdmin._id, updatedAdmin.username, type, title, message, data, notificationType, pushSent, session )
+
+            }
+
+        await session.commitTransaction()
+        const token = await createJwtToken(user.username, user._id, user.role, user.mess_id, secret)
+
+        return res.status(200).json({ success: true, message: "Google login successful", token: token })
+
+    } catch (err) {
+        await session.abortTransaction()
+        console.error("Google login error:", err.message)
+        return res.status(500).json({ success: false, message: "Server error" })
+
+    } finally{
+        await session.endSession()
+    }
+}
