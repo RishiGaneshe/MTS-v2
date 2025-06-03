@@ -370,12 +370,19 @@ exports.handlePostGoogleAuth= async(req, res)=>{
 
                 const result1= await notificationFunction(mess_id, user[0]._id, user[0].username, type, title, message, data, notificationType, pushSent, session )
 
+                await session.commitTransaction()
+                console.log('Google Account Creation and login successful')
+                const token = await createJwtToken(user[0].username, user[0]._id, role, mess_id, secret)
+
+                return res.status(200).json({ success: true, message: "Google Account Creation and login successful", token: token })
+
+            }else{
+                await session.commitTransaction()
+                console.log('Google login successful')
+                const token = await createJwtToken(user.username, user._id, role, mess_id, secret)
+
+                return res.status(200).json({ success: true, message: "Google login successful", token: token })
             }
-
-        await session.commitTransaction()
-        const token = await createJwtToken(user[0].username, user[0]._id, role, mess_id, secret)
-
-        return res.status(200).json({ success: true, message: "Google login successful", token: token })
 
     } catch (err) {
         await session.abortTransaction()
