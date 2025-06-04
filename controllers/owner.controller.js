@@ -1,6 +1,8 @@
 const crypto = require('crypto')
 const secret= process.env.Secret
 const mongoose= require('mongoose')
+const validator = require('validator')
+const OTP= require('../models/otpSchema.js')
 const Token= require('../models/tokenSchema.js')
 const User= require('../models/signUpSchema.js')
 const TokenPrice= require('../models/messTokenPrice.js')
@@ -12,11 +14,14 @@ const TokenSubmission= require('../models/submittedTokenSchema.js')
 const PushNotificationToken= require('../models/pushNotificationToken.js')
 const PreRegisteredStudent= require('../models/preRegistrationEmailSchema.js')
 
-const { verifyToken }= require('../services/jwtToken.js')
 const { redisClient } = require("../services/redisConnection.js")
 const { sendPushNotifications }= require('../services/sendPushNotification.js')
 const { notificationFunction }= require('../services/notificationService.js')
 const { sendEmailPreRegisteredMessage } = require('../services/emailServices.js')
+
+const { hashPassword, verifyPassword}= require('../services/passwordHashing.js')
+const { sendSignUpOTP, sendForgetPassOTP } = require('../services/emailServices.js')
+const { createJwtToken, verifyToken, decodeToken }= require('../services/jwtToken.js')
 
 
 
@@ -192,7 +197,236 @@ exports.handleGetAllRedeemedTokensHistory= async(req, res)=>{
 }
   
 
+                       // New Logics
 
+exports.handleSendEmailForSignUp = async (req, res) => {
+    const session= await mongoose.startSession()
+    try {
+        session.startTransaction()
+        const { password, confirmPassword, email, role } = req.body
+
+        if (!password || !confirmPassword || !email || !role) {
+            await session.abortTransaction()
+            return res.status(400).json({ success: false, message: "All fields are required." })
+        }
+
+        if (!validator.isEmail(email)) {
+            await session.abortTransaction()
+            return res.status(400).json({ success: false, message: "Invalid email format." })
+        }
+
+        if (password !== confirmPassword) {
+            await session.abortTransaction()
+            return res.status(400).json({ success: false, message: "Passwords do not match." })
+        }
+
+        const existingUser = await User.findOne({ 
+            $or: [{ email, role: 'owner' }, { email, role }]
+        }).session(session)
+         
+        if (existingUser) {
+            await session.abortTransaction()
+            return res.status(400).json({ success: false, message: "This email is already registered in this mess." })
+        }
+
+        const hashedPassword = await hashPassword(password)
+    
+        const atIndex = email.indexOf('@')
+            if (atIndex === -1) return res.status(400).json({ success: false, message: "Enter Correct Email formate." })
+
+        let username= email.slice(0, atIndex)
+        try{
+            await User.create([{
+                username: username,
+                email: email,
+                password: hashedPassword,
+                role: role,
+                isActive: false,
+            }], { session })
+            
+        }catch(err){
+            console.error("Error in user data submission: "+ err.message)
+            throw err
+        }
+        
+        const otp = crypto.randomInt(100000, 999999).toString()
+
+        try{
+             await OTP.create([{
+                email: email,
+                otp: otp,
+                createdAt: new Date(), 
+            }], { session })
+            
+        }catch(err){
+            console.error("Error in OTP Storing: "+ err.message)
+            throw err
+        }
+
+        await sendSignUpOTP(email, otp)
+        console.log(`OTP sent successfully for User Sign-Up.`);
+        
+        await session.commitTransaction()
+
+        return res.status(200).json({ success: true, message: `OTP sent successfully to ${email}`, email: email })
+
+    } catch (err) {
+        if (session && session.inTransaction()) {
+            await session.abortTransaction()
+        }
+        console.error("Error in sending Email for sign-up: " + err.message)
+        return res.status(500).json({ success: false, message: "Internal server error." })
+
+    } finally{
+        await session.endSession()
+    }
+}
+
+
+exports.handlePostVerifyOTP = async (req, res) => {
+    const session= await mongoose.startSession()
+    let { email, otp } = req.body
+    otp= Number(otp)
+
+    try {
+        session.startTransaction()
+
+        if ( !email || !otp ) {
+            await session.abortTransaction()
+            return res.status(400).json({ success: false, message: "All fields are required." })
+        }
+        
+        if (!validator.isEmail(email)) {
+            await session.abortTransaction()
+            return res.status(400).json({ success: false, message: "Invalid email format" })
+        }
+
+        const otpDoc = await OTP.findOne({ email })
+
+        if (!otpDoc) {
+            const inactiveUser = await User.findOne({ email, role: 'owner', isActive: false })
+            if (inactiveUser) {
+                await User.deleteOne({ email, role: 'owner', isActive: false })
+            }
+            await session.abortTransaction()
+            return res.status(400).json({ message: 'OTP Expired.Sign-up again.' })
+        }
+
+        if (otpDoc.otp !== otp) {
+            await session.abortTransaction()
+            return res.status(400).json({ message: `Invalid OTP.` })
+        }
+
+        try{
+            const updatedAdmin = await User.findOneAndUpdate(
+                { email, role: 'owner' },
+                { $set: { isActive: true } },
+                { new: true, session }
+              )
+            
+            await OTP.deleteOne({ email, role: 'owner' }).session(session)
+
+            await UserProfile.create([{
+                user: updatedAdmin._id, 
+                username: updatedAdmin.username,
+                email: email,
+                role: updatedAdmin.role,
+                isActive: true, 
+            }], { session })
+
+            await MessProfile.create([{
+                ownerId: updatedAdmin._id,
+                ownerUsername: updatedAdmin.username,
+                email: email
+            }], { session })
+
+            let pushSent= false
+            let type= 'security'
+            const mess_id= 'null'
+            let notificationType= 'in-app'
+            let title= 'Account Created'
+            let message= `Mess Owner Account created successfully with username : ${updatedAdmin.username}.`
+            let data = { username: updatedAdmin.username, email: email }
+            const result1= await notificationFunction(mess_id, updatedAdmin._id, updatedAdmin.username, type, title, message, data, notificationType, pushSent, session )
+            
+        }catch(err){
+            throw err
+        }
+
+        await session.commitTransaction()
+        console.info('OTP verified. Registration complete')
+
+        return res.status(200).json({ success: true, message: 'OTP verified. Registration complete.' })
+
+    } catch (err) {
+        await session.abortTransaction()
+        console.error('Error verifying OTP.'+ err.message)
+        return res.status(500).json({ success: false, message: 'Error verifying OTP.' })
+        
+    } finally {
+        await session.endSession()
+    }
+}
+
+
+exports.handlePostUserLogin= async (req, res)=>{
+    try{
+        const {email, password }= req.body
+    
+        let { role }= req.body
+              if( !email || !password || !role )  { 
+                 return res.status(400).json({ success: false, message: "All Fields are required."})
+              }
+
+        const user= await User.findOne( {email: email, isActive: true, role: role})
+             if( !user){
+                const dummyHash= "$argon2d$v=19$m=12,t=3,p=1$ajUydGFhaWw4ZTAwMDAwMA$MRhztKGcPpp8tyzeH9LvDQ"
+                await verifyPassword( dummyHash, password)
+                return res.status(400).json({ success: false, message: "Incorrect username or password"})
+             }
+     
+        let match
+        try{
+            match= await verifyPassword(user.password, password)
+        }catch(err){
+            console.error(err.message)
+            throw err
+        }
+
+        if(!match){
+            return res.status(400).json({ success: false, message: "Incorrect username or password"})
+        }
+
+        let username
+        if( user.mess_id= null || user.mess_id== 'null' || user.mess_id == 'undefined' || user.mess_id == '' ){
+            role= user.role
+            const id= user._id
+            const mess_id= 'null'
+            username= user.username
+            const session_id= await createJwtToken( username, id, role, mess_id, secret)
+        
+            console.log(`${role} logged in.`)
+            return res.status(200).json({ success: true, message:"log in successfull", token: session_id})
+        }
+
+        role= user.role
+        const id= user._id
+        mess_id= user.mess_id
+        username= user.username
+        const session_id= await createJwtToken( username, id, role, mess_id, secret)
+        
+        console.log(`${role} logged in.`)
+        
+        return res.status(200).json({ success: true, message:"log in successfull", token: session_id})
+        
+    }catch(err){
+        console.error("Error in user login API: ", err.message)
+        return res.status(500).json({ success: false, message: "Internal Server Error."})
+    }
+}
+
+
+                        // 
 
 exports.handlePostCreateTokenPrice= async(req, res)=>{
     const session= await mongoose.startSession()

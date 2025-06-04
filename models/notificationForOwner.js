@@ -2,7 +2,7 @@ const mongoose = require("mongoose")
 
 const notificationSchema = new mongoose.Schema(
   {
-    mess_id: { type: String, required: true },              // to be indexed
+    mess_id: { type: String, default: null },              // to be indexed
     type: { type: String, required: true, enum: ['tokens', 'transactions', 'token-configs', 'security', 'others'] },
     student: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
     student_username: { type: String, required: true },     // to be indexed

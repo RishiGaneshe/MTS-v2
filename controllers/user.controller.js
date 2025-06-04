@@ -306,9 +306,9 @@ exports.handlePostSendPasswordResetOTP= async(req, res)=>{
 
 
 exports.handlePostGoogleAuth= async(req, res)=>{
-    const { idToken, mess_id, role } = req.body
+    const { idToken, role } = req.body
 
-    if (!idToken || !mess_id || !role) {
+    if (!idToken || !role) {
         return res.status(400).json({ success: false, message: "Missing fields" })
     }
 
@@ -330,7 +330,7 @@ exports.handlePostGoogleAuth= async(req, res)=>{
     try {
         session.startTransaction()
 
-        let user = await adminData.findOne({ email, mess_id, role }).session(session)
+        let user = await adminData.findOne({ email, role: 'owner' }).session(session)
             if (!user) {
                 const base = name.toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 10)
                 const suffix = Math.floor(1000 + Math.random() * 9000)
@@ -339,17 +339,14 @@ exports.handlePostGoogleAuth= async(req, res)=>{
                 user = await adminData.create([{
                     email,
                     username,
-                    mess_id,
                     role,
                     isActive: true,
-                    password: '1234567890'
                 }], { session })
 
                 await Profile.create([{
                     user: user[0]._id,
                     username,
                     email,
-                    mess_id,
                     isActive: true,
                     role
                 }], { session })
@@ -357,16 +354,16 @@ exports.handlePostGoogleAuth= async(req, res)=>{
                 await MessProfile.create([{
                     ownerId: user[0]._id,
                     ownerUsername: username,
-                    mess_id: mess_id,
                     email: email
                 }], { session })
 
                 let pushSent= false
                 let type= 'security'
+                const mess_id= 'null'
                 let notificationType= 'in-app'
                 let title= 'Account Created'
                 let message= `Mess Owner Account created successfully with username : ${user[0].username}.`
-                let data = { username: user[0].username, email: email, mess_id: mess_id }
+                let data = { username: user[0].username, email: email }
 
                 const result1= await notificationFunction(mess_id, user[0]._id, user[0].username, type, title, message, data, notificationType, pushSent, session )
 
@@ -378,8 +375,19 @@ exports.handlePostGoogleAuth= async(req, res)=>{
 
             }else{
                 await session.commitTransaction()
+                
+                if( user.mess_id= null || user.mess_id== 'null' || user.mess_id == 'undefined' || user.mess_id == '' ){
+                            const id= user._id
+                            role= user.role
+                            const mess_id= 'null'
+                            const session_id= await createJwtToken( user.username, user.id, user.role, mess_id, secret)
+                        
+                            console.log('Google login successful')
+                            return res.status(200).json({ success: true, message:"log in successfull", token: session_id})
+                }
+                
                 console.log('Google login successful')
-                const token = await createJwtToken(user.username, user._id, role, mess_id, secret)
+                const token = await createJwtToken(user.username, user.id, user.role, user.mess_id, secret)
 
                 return res.status(200).json({ success: true, message: "Google login successful", token: token })
             }

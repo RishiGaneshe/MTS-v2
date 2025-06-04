@@ -4,7 +4,7 @@ const messProfileSchema = new mongoose.Schema(
   {
     ownerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     ownerUsername: { type: String, required: true},
-    mess_id: { type: String, required: true, unique: true },
+    mess_id: { type: String, unique: true },
     email:   { type: String, required: true },
     messName: { type: String, default: null },
     messAddress: { type: String, default: null },
